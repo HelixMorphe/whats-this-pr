@@ -19,6 +19,6 @@
   "files": ["bin", "lib", "template.html", "README.md", "LICENSE", "NOTICE"],
   "engines": { "node": ">=20" },
   "scripts": {
-    "test": "node --test test/"
+    "test": "node --test test/*.test.mjs"
   }
 }

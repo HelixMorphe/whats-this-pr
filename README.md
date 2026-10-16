@@ -11,16 +11,16 @@ It is a [Claude Code](https://claude.com/claude-code) skill plus an npm package.
 
 ## Examples
 
-Pages for real pull requests, written by the skill (`pnpm examples` builds them into `dist/examples/`):
+Pages for real pull requests, written by the skill. Open them at **[helixmorphe.github.io/whats-this-pr](https://helixmorphe.github.io/whats-this-pr/)** (`pnpm examples` builds them into `dist/examples/`):
 
 | PR | What the page shows |
 |---|---|
-| [caddyserver/caddy#8168](https://github.com/caddyserver/caddy/pull/8168) | Before: a retry rule that only tested the request retried a backend's 200 into a 502. With: the 200 comes back. |
-| [honojs/hono#4915](https://github.com/honojs/hono/pull/4915) | Before: with `vary` set, nothing was cached (the PR body's "before" described an older release). With: one entry per header value. |
-| [nodejs/undici#5683](https://github.com/nodejs/undici/pull/5683) | Before: `retryAfter: false` was ignored, so a 60 s `Retry-After` waited the 30 s cap. With: the normal 500 ms backoff. |
-| [Kludex/starlette#3435](https://github.com/Kludex/starlette/pull/3435) | A new feature, HTTP 103 Early Hints, through the middleware and the endpoint types. No before: there wasn't one. |
-| [Kludex/uvicorn#3195](https://github.com/Kludex/uvicorn/pull/3195) | The access log shows `/one%2Ftwo` as sent, not `/one/two`. No red: every call succeeds; only the logged value changes. |
-| [gin-gonic/gin#4805](https://github.com/gin-gonic/gin/pull/4805) | Before: `c.HTML` with no templates panicked. With: an empty 200 and a logged error, which the page flags as quieter, not safer. |
+| [caddyserver/caddy#8168](https://github.com/caddyserver/caddy/pull/8168) · [page](https://helixmorphe.github.io/whats-this-pr/caddy-8168.html) | Before: a retry rule that only tested the request retried a backend's 200 into a 502. With: the 200 comes back. |
+| [honojs/hono#4915](https://github.com/honojs/hono/pull/4915) · [page](https://helixmorphe.github.io/whats-this-pr/hono-4915.html) | Before: with `vary` set, nothing was cached (the PR body's "before" described an older release). With: one entry per header value. |
+| [nodejs/undici#5683](https://github.com/nodejs/undici/pull/5683) · [page](https://helixmorphe.github.io/whats-this-pr/undici-5683.html) | Before: `retryAfter: false` was ignored, so a 60 s `Retry-After` waited the 30 s cap. With: the normal 500 ms backoff. |
+| [Kludex/starlette#3435](https://github.com/Kludex/starlette/pull/3435) · [page](https://helixmorphe.github.io/whats-this-pr/starlette-3435.html) | A new feature, HTTP 103 Early Hints, through the middleware and the endpoint types. No before: there wasn't one. |
+| [Kludex/uvicorn#3195](https://github.com/Kludex/uvicorn/pull/3195) · [page](https://helixmorphe.github.io/whats-this-pr/uvicorn-3195.html) | The access log shows `/one%2Ftwo` as sent, not `/one/two`. No red: every call succeeds; only the logged value changes. |
+| [gin-gonic/gin#4805](https://github.com/gin-gonic/gin/pull/4805) · [page](https://helixmorphe.github.io/whats-this-pr/gin-4805.html) | Before: `c.HTML` with no templates panicked. With: an empty 200 and a logged error, which the page flags as quieter, not safer. |
 
 ## Use it in Claude Code
 

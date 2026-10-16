@@ -1,0 +1,13 @@
+{
+  "name": "whats-this-pr-monorepo",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "pnpm --filter @whats-this-pr/app dev",
+    "build": "pnpm --filter @whats-this-pr/app template && node scripts/copy-template.mjs",
+    "check": "pnpm --filter @whats-this-pr/app exec tsc -b && pnpm --filter @whats-this-pr/app lint",
+    "test": "pnpm --filter whats-this-pr test",
+    "examples": "node scripts/examples.mjs"
+  },
+  "packageManager": "pnpm@11.24.0"
+}

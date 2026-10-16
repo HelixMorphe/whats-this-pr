@@ -1,0 +1,28 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Typecheck and lint the app
+        run: pnpm check
+      - name: Build the template into the package
+        run: pnpm build
+      - name: Test the CLI on every example
+        run: pnpm test
+      - name: Make every example's page
+        run: node scripts/examples.mjs
+      - name: Pack the package the way npm would
+        run: cd packages/cli && npm pack --dry-run

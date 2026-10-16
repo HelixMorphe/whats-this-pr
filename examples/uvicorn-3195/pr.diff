@@ -1,0 +1,67 @@
+diff --git a/tests/protocols/test_http.py b/tests/protocols/test_http.py
+index 4f6524c16..87ff6e2ea 100644
+--- a/tests/protocols/test_http.py
++++ b/tests/protocols/test_http.py
+@@ -346,7 +346,17 @@ async def test_invalid_header_name(http_protocol_cls: type[HTTPProtocol], name:
+     assert protocol.transport.is_closing()
+ 
+ 
+-@pytest.mark.parametrize("path", ["/", "/?foo", "/?foo=bar", "/?foo=bar&baz=1"])
++@pytest.mark.parametrize(
++    "path",
++    [
++        "/",
++        "/?foo",
++        "/?foo=bar",
++        "/?foo=bar&baz=1",
++        pytest.param("/one%2Ftwo", id="percent-encoded-slash"),
++        pytest.param("/%41", id="percent-encoded-letter"),
++    ],
++)
+ async def test_request_logging(path: str, http_protocol_cls: type[HTTPProtocol], caplog: pytest.LogCaptureFixture):
+     get_request_with_query_string = b"\r\n".join(
+         [f"GET {path} HTTP/1.1".encode("ascii"), b"Host: example.org", b"", b""]
+@@ -362,6 +372,21 @@ async def test_request_logging(path: str, http_protocol_cls: type[HTTPProtocol],
+     assert f'"GET {path} HTTP/1.1" 200' in caplog.records[0].message
+ 
+ 
++async def test_request_logging_escapes_quotes(http_protocol_cls: type[HTTPProtocol], caplog: pytest.LogCaptureFixture):
++    if http_protocol_cls.__name__ == "ZttpProtocol":
++        pytest.skip("zttp rejects quotes in the request target")
++
++    caplog.set_level(logging.INFO, logger="uvicorn.access")
++    logging.getLogger("uvicorn.access").propagate = True
++
++    app = Response("Hello, world", media_type="text/plain")
++
++    protocol = get_connected_protocol(app, http_protocol_cls, log_config=None)
++    protocol.data_received(b'GET /foo"bar?a"b HTTP/1.1\r\nHost: example.org\r\n\r\n')
++    await protocol.loop.run_one()
++    assert '"GET /foo%22bar?a%22b HTTP/1.1" 200' in caplog.records[0].message
++
++
+ async def test_head_request(http_protocol_cls: type[HTTPProtocol]):
+     app = Response("Hello, world", media_type="text/plain")
+ 
+diff --git a/uvicorn/protocols/utils.py b/uvicorn/protocols/utils.py
+index a9a89065c..c629f0442 100644
+--- a/uvicorn/protocols/utils.py
++++ b/uvicorn/protocols/utils.py
+@@ -2,7 +2,6 @@
+ 
+ import asyncio
+ import socket
+-import urllib.parse
+ 
+ from uvicorn._types import WWWScope
+ 
+@@ -56,7 +55,7 @@ def get_client_addr(scope: WWWScope) -> str:
+ 
+ 
+ def get_path_with_query_string(scope: WWWScope) -> str:
+-    path_with_query_string = urllib.parse.quote(scope["path"])
++    path_with_query_string = scope["raw_path"].decode("latin1")
+     if scope["query_string"]:
+         path_with_query_string = "{}?{}".format(path_with_query_string, scope["query_string"].decode("ascii"))
+-    return path_with_query_string
++    return path_with_query_string.replace('"', "%22")

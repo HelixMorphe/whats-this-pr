@@ -1,0 +1,250 @@
+{
+  "version": 1,
+  "title": "A request-only retry_match no longer turns a backend's 200 into a 502",
+  "diagram": {
+    "view": {
+      "w": 1000,
+      "h": 650
+    },
+    "top": 30,
+    "end": 620,
+    "label": "Sequence: a client POSTs through Caddy's reverse proxy to two upstreams with lb_retries 2. With this PR a request-only retry_match expression is not evaluated against the response, so the first upstream's 200 goes to the client. Before, the 200 matched, the POST was resent with an empty body to both upstreams, both attempts failed and the client got a 502.",
+    "participants": [
+      {
+        "id": "client",
+        "x": 120,
+        "name": "CLIENT"
+      },
+      {
+        "id": "caddy",
+        "x": 380,
+        "name": "CADDY"
+      },
+      {
+        "id": "up2",
+        "x": 640,
+        "name": "UPSTREAM :9002"
+      },
+      {
+        "id": "up1",
+        "x": 880,
+        "name": "UPSTREAM :9001"
+      }
+    ],
+    "messages": [
+      {
+        "id": "req",
+        "from": "client",
+        "to": "caddy",
+        "y": 150,
+        "text": "post /order · order=1"
+      },
+      {
+        "id": "hit",
+        "from": "caddy",
+        "to": "up2",
+        "y": 205,
+        "text": "post · order=1"
+      },
+      {
+        "id": "hitR",
+        "from": "up2",
+        "to": "caddy",
+        "y": 255,
+        "text": "200 · ok",
+        "reply": true
+      },
+      {
+        "id": "retry1",
+        "from": "caddy",
+        "to": "up1",
+        "y": 330,
+        "text": "retry 1 · empty body",
+        "labelX": 760
+      },
+      {
+        "id": "err1",
+        "from": "up1",
+        "to": "caddy",
+        "y": 385,
+        "text": "transport error",
+        "reply": true,
+        "labelX": 760
+      },
+      {
+        "id": "retry2",
+        "from": "caddy",
+        "to": "up2",
+        "y": 445,
+        "text": "retry 2 · empty body"
+      },
+      {
+        "id": "err2",
+        "from": "up2",
+        "to": "caddy",
+        "y": 500,
+        "text": "transport error",
+        "reply": true
+      },
+      {
+        "id": "resp",
+        "from": "caddy",
+        "to": "client",
+        "y": 580,
+        "text": "200 · ok",
+        "reply": true
+      }
+    ],
+    "frame": {
+      "x": 70,
+      "y": 290,
+      "w": 870,
+      "h": 240,
+      "kind": "opt",
+      "branches": [
+        {
+          "label": "response retried"
+        }
+      ]
+    }
+  },
+  "inputs": [
+    {
+      "id": "before",
+      "kind": "switch",
+      "label": "BEFORE THIS PR"
+    },
+    {
+      "id": "expr",
+      "kind": "choice",
+      "label": "RETRY CONDITION",
+      "options": [
+        {
+          "value": "method",
+          "label": "Request method"
+        },
+        {
+          "value": "upstream",
+          "label": "Chosen upstream"
+        },
+        {
+          "value": "status",
+          "label": "Response status"
+        }
+      ]
+    },
+    {
+      "id": "answer",
+      "kind": "choice",
+      "label": "FIRST UPSTREAM ANSWERS",
+      "options": [
+        {
+          "value": "ok",
+          "label": "200 OK"
+        },
+        {
+          "value": "bad",
+          "label": "502 Bad Gateway"
+        }
+      ]
+    }
+  ],
+  "initial": {
+    "before": false,
+    "expr": "method",
+    "answer": "ok"
+  },
+  "rules": [
+    {
+      "show": [
+        "req",
+        "hit",
+        "hitR",
+        "resp"
+      ],
+      "hot": [
+        "caddy"
+      ]
+    },
+    {
+      "when": {
+        "answer": "ok"
+      },
+      "status": {
+        "resp": "ok"
+      }
+    },
+    {
+      "when": {
+        "answer": "bad"
+      },
+      "labels": {
+        "hitR": "502 bad gateway",
+        "resp": "502 bad gateway"
+      },
+      "status": {
+        "hitR": "error",
+        "resp": "error"
+      }
+    },
+    {
+      "when": {
+        "before": false,
+        "expr": [
+          "method",
+          "upstream"
+        ]
+      },
+      "frame": "off"
+    },
+    {
+      "when": {
+        "expr": "status",
+        "answer": "ok"
+      },
+      "frame": "off"
+    },
+    {
+      "when": {
+        "before": true,
+        "expr": [
+          "method",
+          "upstream"
+        ]
+      },
+      "show": [
+        "retry1",
+        "err1",
+        "retry2",
+        "err2"
+      ],
+      "frame": "ink",
+      "labels": {
+        "resp": "502 bad gateway"
+      },
+      "status": {
+        "err1": "error",
+        "err2": "error",
+        "resp": "error"
+      }
+    },
+    {
+      "when": {
+        "expr": "status",
+        "answer": "bad"
+      },
+      "show": [
+        "retry1",
+        "err1",
+        "retry2",
+        "err2"
+      ],
+      "frame": "ink",
+      "status": {
+        "err1": "error",
+        "err2": "error",
+        "resp": "error"
+      }
+    }
+  ]
+}

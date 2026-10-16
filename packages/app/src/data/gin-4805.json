@@ -1,0 +1,170 @@
+{
+ "repo": "gin-gonic/gin",
+ "number": 4805,
+ "title": "fix(context): handle missing HTML renderer",
+ "author": "Boulea7",
+ "agent": "Unknown",
+ "files": 4,
+ "add": 97,
+ "del": 0,
+ "ticket": {
+  "key": "No ticket",
+  "title": "fix(context): handle missing HTML renderer"
+ },
+ "spotlights": [
+  {
+   "id": "silent200",
+   "label": "Crash becomes an empty 200",
+   "why": "Before, a route calling c.HTML with no templates loaded panicked: under gin.Default() Recovery answered 500 and logged a stack trace; under gin.New() the connection dropped. Now the client gets the handler's own status (200) with an empty text/html body, and the error lives only in c.Errors. With gin.New() and no Logger, nothing is logged at all.",
+   "step": 2
+  },
+  {
+   "id": "nocontent",
+   "label": "204 and 304 now pass without complaint",
+   "why": "With no renderer, a 204 or 304 never reaches HTML.Render, so no error is recorded, the context is not aborted and later handlers run. A missing renderer goes unnoticed on those routes.",
+   "step": 2
+  },
+  {
+   "id": "niltemplate",
+   "label": "Custom renderers with nil templates change too",
+   "why": "The nil check lives in render.HTML, so any HTMLRender whose Instance returns HTML{Template: nil} now gets the error instead of a panic, not only the unset-renderer case.",
+   "step": 1
+  },
+  {
+   "id": "unexported",
+   "label": "The new error is not exported",
+   "why": "errHTMLRendererNotConfigured is package-private, so callers inspecting c.Errors can only match it by its text, not with errors.Is.",
+   "step": 1
+  }
+ ],
+ "steps": [
+  {
+   "n": 1,
+   "title": "Make an HTML render with no template return an error",
+   "why": "Adds the errHTMLRendererNotConfigured sentinel and checks r.Template for nil in HTML.Render, after the Content-Type is written and before the template is executed.",
+   "consequence": "render.HTML{} renders to an error with a text/html header and no body, instead of dereferencing a nil template. Nothing calls it that way yet.",
+   "spotlights": [
+    "niltemplate",
+    "unexported"
+   ],
+   "hunks": [
+    {
+     "file": "render/html.go",
+     "isNew": false,
+     "patch": "diff --git a/render/html.go b/render/html.go\nindex 965d84c614..36c8f07992 100644\n--- a/render/html.go\n+++ b/render/html.go\n@@ -5,6 +5,7 @@\n package render\n \n import (\n+\t\"errors\"\n \t\"html/template\"\n \t\"net/http\"\n \n@@ -50,6 +51,8 @@ type HTML struct {\n \n var htmlContentType = []string{\"text/html; charset=utf-8\"}\n \n+var errHTMLRendererNotConfigured = errors.New(\"html renderer is not configured\")\n+\n // Instance (HTMLProduction) returns an HTML instance which it realizes Render interface.\n func (r HTMLProduction) Instance(name string, data any) Render {\n \treturn HTML{\n@@ -88,6 +91,9 @@ func (r HTMLDebug) loadTemplate() *template.Template {\n // Render (HTML) executes template and writes its result with custom ContentType for response.\n func (r HTML) Render(w http.ResponseWriter) error {\n \tr.WriteContentType(w)\n+\tif r.Template == nil {\n+\t\treturn errHTMLRendererNotConfigured\n+\t}\n \n \tif r.Name == \"\" {\n \t\treturn r.Template.Execute(w, r.Data)\n",
+     "notes": [
+      {
+       "line": 8,
+       "at": "\"errors\"",
+       "text": "Only for the new sentinel"
+      },
+      {
+       "line": 54,
+       "at": "errHTMLRendererNotConfigured",
+       "text": "Unexported: match by text only"
+      },
+      {
+       "line": 93,
+       "at": "r.WriteContentType(w)",
+       "text": "Runs first: header set even on error"
+      },
+      {
+       "line": 94,
+       "at": "if r.Template == nil {",
+       "text": "Guard before Execute touches nil"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "n": 2,
+   "title": "Send c.HTML through Render when no renderer is set",
+   "why": "Context.HTML used to call c.engine.HTMLRender.Instance unconditionally, which panics on a nil interface. Now, when HTMLRender is nil, it hands an empty render.HTML{} to c.Render.",
+   "consequence": "For a status with a body, c.Render records the error with c.Error and aborts; for 1xx, 204 and 304 it writes only the header, as before. No status is changed to 500.",
+   "spotlights": [
+    "silent200",
+    "nocontent"
+   ],
+   "hunks": [
+    {
+     "file": "context.go",
+     "isNew": false,
+     "patch": "diff --git a/context.go b/context.go\nindex 1dc730e323..788b00bba5 100644\n--- a/context.go\n+++ b/context.go\n@@ -1219,6 +1219,11 @@ func (c *Context) Render(code int, r render.Render) {\n // It also updates the HTTP code and sets the Content-Type as \"text/html\".\n // See http://golang.org/doc/articles/wiki/\n func (c *Context) HTML(code int, name string, obj any) {\n+\tif c.engine.HTMLRender == nil {\n+\t\tc.Render(code, render.HTML{})\n+\t\treturn\n+\t}\n+\n \tinstance := c.engine.HTMLRender.Instance(name, obj)\n \tc.Render(code, instance)\n }\n",
+     "notes": [
+      {
+       "line": 1222,
+       "at": "if c.engine.HTMLRender == nil {",
+       "text": "Old code panicked on this nil"
+      },
+      {
+       "line": 1223,
+       "at": "c.Render(code, render.HTML{})",
+       "text": "Template nil: Render returns the error"
+      },
+      {
+       "line": 1227,
+       "at": "instance := c.engine.HTMLRender.Instance(name, obj)",
+       "text": "Configured path unchanged"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "n": 3,
+   "title": "Prove GET, 204, 304 and HEAD without a renderer",
+   "why": "A table test drives c.HTML through a real router with no templates loaded and a second handler, and a unit test renders HTML{} directly.",
+   "consequence": "Each case asserts no panic, the handler's status, text/html, an empty body, and whether the error, abort and next handler happen.",
+   "spotlights": [],
+   "hunks": [
+    {
+     "file": "context_test.go",
+     "isNew": false,
+     "patch": "diff --git a/context_test.go b/context_test.go\nindex e8d305e4ed..cef488c987 100644\n--- a/context_test.go\n+++ b/context_test.go\n@@ -1345,6 +1345,82 @@ func TestContextRenderHTML(t *testing.T) {\n \tassert.Equal(t, \"text/html; charset=utf-8\", w.Header().Get(\"Content-Type\"))\n }\n \n+func TestContextRenderHTMLWithoutRenderer(t *testing.T) {\n+\ttests := []struct {\n+\t\tname           string\n+\t\tmethod         string\n+\t\tstatus         int\n+\t\twantErrors     []string\n+\t\twantAborted    bool\n+\t\twantNextCalled bool\n+\t}{\n+\t\t{\n+\t\t\tname:        \"body allowed\",\n+\t\t\tmethod:      http.MethodGet,\n+\t\t\tstatus:      http.StatusAccepted,\n+\t\t\twantErrors:  []string{\"html renderer is not configured\"},\n+\t\t\twantAborted: true,\n+\t\t},\n+\t\t{\n+\t\t\tname:           \"no content\",\n+\t\t\tmethod:         http.MethodGet,\n+\t\t\tstatus:         http.StatusNoContent,\n+\t\t\twantNextCalled: true,\n+\t\t},\n+\t\t{\n+\t\t\tname:           \"not modified\",\n+\t\t\tmethod:         http.MethodGet,\n+\t\t\tstatus:         http.StatusNotModified,\n+\t\t\twantNextCalled: true,\n+\t\t},\n+\t\t{\n+\t\t\tname:        \"head\",\n+\t\t\tmethod:      http.MethodHead,\n+\t\t\tstatus:      http.StatusOK,\n+\t\t\twantErrors:  []string{\"html renderer is not configured\"},\n+\t\t\twantAborted: true,\n+\t\t},\n+\t}\n+\n+\tfor _, tt := range tests {\n+\t\tt.Run(tt.name, func(t *testing.T) {\n+\t\t\tw := httptest.NewRecorder()\n+\t\t\trouter := New()\n+\t\t\tvar contextErrors []string\n+\t\t\tvar contextAborted bool\n+\t\t\tnextHandlerCalled := false\n+\n+\t\t\thandlers := []HandlerFunc{\n+\t\t\t\tfunc(c *Context) {\n+\t\t\t\t\tc.HTML(tt.status, \"index.tmpl\", H{\"title\": \"Main website\"})\n+\t\t\t\t\tcontextErrors = c.Errors.Errors()\n+\t\t\t\t\tcontextAborted = c.IsAborted()\n+\t\t\t\t},\n+\t\t\t\tfunc(_ *Context) {\n+\t\t\t\t\tnextHandlerCalled = true\n+\t\t\t\t},\n+\t\t\t}\n+\t\t\tif tt.method == http.MethodHead {\n+\t\t\t\trouter.HEAD(\"/\", handlers...)\n+\t\t\t} else {\n+\t\t\t\trouter.GET(\"/\", handlers...)\n+\t\t\t}\n+\n+\t\t\treq := httptest.NewRequest(tt.method, \"/\", nil)\n+\t\t\trequire.NotPanics(t, func() {\n+\t\t\t\trouter.ServeHTTP(w, req)\n+\t\t\t})\n+\n+\t\t\tassert.Equal(t, tt.status, w.Code)\n+\t\t\tassert.Equal(t, \"text/html; charset=utf-8\", w.Header().Get(\"Content-Type\"))\n+\t\t\tassert.Equal(t, tt.wantErrors, contextErrors)\n+\t\t\tassert.Equal(t, tt.wantAborted, contextAborted)\n+\t\t\tassert.Equal(t, tt.wantNextCalled, nextHandlerCalled)\n+\t\t\tassert.Empty(t, w.Body.String())\n+\t\t})\n+\t}\n+}\n+\n func TestContextRenderHTML2(t *testing.T) {\n \tw := httptest.NewRecorder()\n \tc, router := CreateTestContext(w)\n",
+     "notes": [
+      {
+       "line": 1360,
+       "at": "http.StatusAccepted",
+       "text": "Body allowed: error and abort"
+      },
+      {
+       "line": 1367,
+       "at": "http.StatusNoContent",
+       "text": "204: no error, next handler runs"
+      },
+      {
+       "line": 1404,
+       "at": "router.HEAD(\"/\", handlers...)",
+       "text": "HEAD takes the GET error path"
+      },
+      {
+       "line": 1410,
+       "at": "require.NotPanics(t, func() {",
+       "text": "The old crash"
+      },
+      {
+       "line": 1414,
+       "at": "tt.status, w.Code",
+       "text": "Status kept: no 500"
+      }
+     ]
+    },
+    {
+     "file": "render/render_test.go",
+     "isNew": false,
+     "patch": "diff --git a/render/render_test.go b/render/render_test.go\nindex f63878b966..2481545212 100644\n--- a/render/render_test.go\n+++ b/render/render_test.go\n@@ -630,6 +630,16 @@ func TestRenderHTMLTemplate(t *testing.T) {\n \tassert.Equal(t, \"text/html; charset=utf-8\", w.Header().Get(\"Content-Type\"))\n }\n \n+func TestRenderHTMLWithoutTemplate(t *testing.T) {\n+\tw := httptest.NewRecorder()\n+\n+\terr := (HTML{}).Render(w)\n+\n+\trequire.EqualError(t, err, \"html renderer is not configured\")\n+\tassert.Empty(t, w.Body.String())\n+\tassert.Equal(t, \"text/html; charset=utf-8\", w.Header().Get(\"Content-Type\"))\n+}\n+\n func TestRenderHTMLTemplateEmptyName(t *testing.T) {\n \tw := httptest.NewRecorder()\n \ttempl := template.Must(template.New(\"\").Parse(`Hello {{.name}}`))\n",
+     "notes": [
+      {
+       "line": 636,
+       "at": "(HTML{}).Render(w)",
+       "text": "Zero value: no template"
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "mechanical": [],
+ "url": "https://github.com/gin-gonic/gin/pull/4805"
+}

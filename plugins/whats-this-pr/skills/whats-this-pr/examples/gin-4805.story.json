@@ -1,0 +1,144 @@
+{
+ "repo": "gin-gonic/gin",
+ "number": 4805,
+ "url": "https://github.com/gin-gonic/gin/pull/4805",
+ "title": "fix(context): handle missing HTML renderer",
+ "author": "Boulea7",
+ "agent": "Unknown",
+ "spotlights": [
+  {
+   "id": "silent200",
+   "label": "Crash becomes an empty 200",
+   "why": "Before, a route calling c.HTML with no templates loaded panicked: under gin.Default() Recovery answered 500 and logged a stack trace; under gin.New() the connection dropped. Now the client gets the handler's own status (200) with an empty text/html body, and the error lives only in c.Errors. With gin.New() and no Logger, nothing is logged at all.",
+   "step": 2
+  },
+  {
+   "id": "nocontent",
+   "label": "204 and 304 now pass without complaint",
+   "why": "With no renderer, a 204 or 304 never reaches HTML.Render, so no error is recorded, the context is not aborted and later handlers run. A missing renderer goes unnoticed on those routes.",
+   "step": 2
+  },
+  {
+   "id": "niltemplate",
+   "label": "Custom renderers with nil templates change too",
+   "why": "The nil check lives in render.HTML, so any HTMLRender whose Instance returns HTML{Template: nil} now gets the error instead of a panic, not only the unset-renderer case.",
+   "step": 1
+  },
+  {
+   "id": "unexported",
+   "label": "The new error is not exported",
+   "why": "errHTMLRendererNotConfigured is package-private, so callers inspecting c.Errors can only match it by its text, not with errors.Is.",
+   "step": 1
+  }
+ ],
+ "steps": [
+  {
+   "title": "Make an HTML render with no template return an error",
+   "why": "Adds the errHTMLRendererNotConfigured sentinel and checks r.Template for nil in HTML.Render, after the Content-Type is written and before the template is executed.",
+   "consequence": "render.HTML{} renders to an error with a text/html header and no body, instead of dereferencing a nil template. Nothing calls it that way yet.",
+   "spotlights": [
+    "niltemplate",
+    "unexported"
+   ],
+   "hunks": [
+    {
+     "file": "render/html.go",
+     "notes": [
+      [
+       "\"errors\"",
+       "Only for the new sentinel"
+      ],
+      [
+       "var errHTMLRendererNotConfigured",
+       "Unexported: match by text only",
+       "errHTMLRendererNotConfigured"
+      ],
+      [
+       "r.WriteContentType(w)",
+       "Runs first: header set even on error"
+      ],
+      [
+       "if r.Template == nil {",
+       "Guard before Execute touches nil"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "title": "Send c.HTML through Render when no renderer is set",
+   "why": "Context.HTML used to call c.engine.HTMLRender.Instance unconditionally, which panics on a nil interface. Now, when HTMLRender is nil, it hands an empty render.HTML{} to c.Render.",
+   "consequence": "For a status with a body, c.Render records the error with c.Error and aborts; for 1xx, 204 and 304 it writes only the header, as before. No status is changed to 500.",
+   "spotlights": [
+    "silent200",
+    "nocontent"
+   ],
+   "hunks": [
+    {
+     "file": "context.go",
+     "notes": [
+      [
+       "if c.engine.HTMLRender == nil {",
+       "Old code panicked on this nil"
+      ],
+      [
+       "c.Render(code, render.HTML{})",
+       "Template nil: Render returns the error"
+      ],
+      [
+       "instance := c.engine.HTMLRender.Instance(name, obj)",
+       "Configured path unchanged"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "title": "Prove GET, 204, 304 and HEAD without a renderer",
+   "why": "A table test drives c.HTML through a real router with no templates loaded and a second handler, and a unit test renders HTML{} directly.",
+   "consequence": "Each case asserts no panic, the handler's status, text/html, an empty body, and whether the error, abort and next handler happen.",
+   "spotlights": [],
+   "hunks": [
+    {
+     "file": "context_test.go",
+     "notes": [
+      [
+       "status:      http.StatusAccepted,",
+       "Body allowed: error and abort",
+       "http.StatusAccepted"
+      ],
+      [
+       "status:         http.StatusNoContent,",
+       "204: no error, next handler runs",
+       "http.StatusNoContent"
+      ],
+      [
+       "router.HEAD(\"/\", handlers...)",
+       "HEAD takes the GET error path"
+      ],
+      [
+       "require.NotPanics(t, func() {",
+       "The old crash"
+      ],
+      [
+       "assert.Equal(t, tt.status, w.Code)",
+       "Status kept: no 500",
+       "tt.status, w.Code"
+      ]
+     ]
+    },
+    {
+     "file": "render/render_test.go",
+     "notes": [
+      [
+       "err := (HTML{}).Render(w)",
+       "Zero value: no template",
+       "(HTML{}).Render(w)"
+      ]
+     ]
+    }
+   ]
+  }
+ ],
+ "mechanical": []
+}

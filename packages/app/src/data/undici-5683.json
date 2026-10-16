@@ -1,0 +1,132 @@
+{
+ "repo": "nodejs/undici",
+ "number": 5683,
+ "title": "fix(retry): honor the retryAfter option in the default retry strategy",
+ "author": "codeAnqiang-ma",
+ "agent": "AI-assisted (per the PR body)",
+ "files": 2,
+ "add": 40,
+ "del": 2,
+ "ticket": {
+  "key": "No ticket",
+  "title": "fix(retry): honor the retryAfter option in the default retry strategy"
+ },
+ "spotlights": [
+  {
+   "id": "strict",
+   "label": "Only a literal false turns it off",
+   "why": "The check is retryAfter === false. null and undefined become true in the constructor (?? true), but 0, an empty string or the string \"false\" still let the header decide the wait.",
+   "step": 1
+  },
+  {
+   "id": "sooner",
+   "label": "Callers who set false now retry sooner",
+   "why": "retryAfter: false used to do nothing, so code that set it was still waiting as long as the server asked (up to maxTimeout, 30 s by default). It now waits only minTimeout * timeoutFactor ** (counter - 1), so a rate-limited server sees retries earlier than before.",
+   "step": 1
+  },
+  {
+   "id": "custom",
+   "label": "A custom retry function is not covered",
+   "why": "Only the default strategy reads the flag. A retryOptions.retry function still gets retryOptions.retryAfter and has to honour it itself, as before.",
+   "step": 1
+  },
+  {
+   "id": "tested",
+   "label": "One case tested, on the handler alone",
+   "why": "The new test calls onResponseError directly with fake timers: a 429 with retry-after: 60. A zero or HTTP-date header, a real server, and the RetryAgent and interceptors.retry() paths have no new test, and the PR body says the full suite was not run.",
+   "step": 2
+  }
+ ],
+ "steps": [
+  {
+   "n": 1,
+   "title": "Skip the Retry-After header when retryAfter is false",
+   "why": "The default retry strategy, RetryHandler[kRetryHandlerDefaultRetry], now reads retryAfter from retryOptions. When it is exactly false the header is treated as absent, so the wait falls through to the exponential backoff.",
+   "consequence": "retryAfter: false now does what RetryHandler.md and the type docs say, for RetryHandler, RetryAgent and interceptors.retry(). With the default (true) nothing changes.",
+   "spotlights": [
+    "strict",
+    "sooner",
+    "custom"
+   ],
+   "hunks": [
+    {
+     "file": "lib/handler/retry-handler.js",
+     "isNew": false,
+     "patch": "diff --git a/lib/handler/retry-handler.js b/lib/handler/retry-handler.js\nindex c098b510c26..b8111ebea24 100644\n--- a/lib/handler/retry-handler.js\n+++ b/lib/handler/retry-handler.js\n@@ -190,7 +190,8 @@ class RetryHandler {\n       timeoutFactor,\n       statusCodes,\n       errorCodes,\n-      methods\n+      methods,\n+      retryAfter\n     } = retryOptions\n     const { counter } = state\n \n@@ -222,7 +223,7 @@ class RetryHandler {\n       return\n     }\n \n-    let retryAfterHeader = headers?.['retry-after']\n+    let retryAfterHeader = retryAfter === false ? undefined : headers?.['retry-after']\n     if (retryAfterHeader) {\n       retryAfterHeader = Number(retryAfterHeader)\n       retryAfterHeader = Number.isNaN(retryAfterHeader)\n",
+     "notes": [
+      {
+       "line": 194,
+       "at": "retryAfter",
+       "text": "Stored as retryAfter ?? true, never read before"
+      },
+      {
+       "line": 226,
+       "at": "=== false",
+       "text": "Strict: only false skips the header"
+      },
+      {
+       "line": 226,
+       "at": "undefined",
+       "text": "undefined: falls to minTimeout backoff"
+      },
+      {
+       "line": 227,
+       "at": "if (retryAfterHeader)",
+       "text": "Date-form headers are skipped too"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "n": 2,
+   "title": "Prove a 60 s Retry-After is ignored when the option is off",
+   "why": "A 429 with retry-after: 60 and retryAfter: false goes straight to onResponseError. After 500 ms of fake time the retry must already have been dispatched.",
+   "consequence": "Fails at the base (the retry would wait 30 s, capped by maxTimeout) and passes with the fix; the zero-second header and date form are not tested.",
+   "spotlights": [
+    "tested"
+   ],
+   "hunks": [
+    {
+     "file": "test/retry-handler.js",
+     "isNew": false,
+     "patch": "diff --git a/test/retry-handler.js b/test/retry-handler.js\nindex 7eb3d3d616c..026e20deba0 100644\n--- a/test/retry-handler.js\n+++ b/test/retry-handler.js\n@@ -381,6 +381,43 @@ test('Should retry immediately when retry-after is zero', async t => {\n   t.assert.strictEqual(retries, 1)\n })\n \n+test('Should ignore retry-after header when retryAfter option is false', async t => {\n+  const clock = FakeTimers.install()\n+  t.after(() => clock.uninstall())\n+\n+  let retries = 0\n+  const handler = new RetryHandler(\n+    {\n+      method: 'GET',\n+      retryOptions: {\n+        retryAfter: false,\n+        maxRetries: 1,\n+        minTimeout: 500\n+      }\n+    },\n+    {\n+      dispatch () {\n+        retries++\n+      },\n+      handler: {}\n+    }\n+  )\n+\n+  handler.onResponseError(null, {\n+    statusCode: 429,\n+    code: 'UND_ERR_REQ_RETRY',\n+    headers: {\n+      'retry-after': '60'\n+    }\n+  })\n+\n+  // Retry must be scheduled by the exponential backoff (minTimeout = 500ms),\n+  // not by the Retry-After header (60s)\n+  await clock.tickAsync(500)\n+\n+  t.assert.strictEqual(retries, 1)\n+})\n+\n test('Should use retry-after header for retries (date)', async t => {\n   t = tspl(t, { plan: 3 })\n \n",
+     "notes": [
+      {
+       "line": 384,
+       "at": "Should ignore retry-after header",
+       "text": "The regression for issue #5682"
+      },
+      {
+       "line": 393,
+       "at": "retryAfter: false",
+       "text": "The option under test"
+      },
+      {
+       "line": 395,
+       "at": "minTimeout: 500",
+       "text": "The backoff it should use"
+      },
+      {
+       "line": 410,
+       "at": "'60'",
+       "text": "What the server asks for"
+      },
+      {
+       "line": 416,
+       "at": "tickAsync(500)",
+       "text": "Only 500 ms of fake time"
+      },
+      {
+       "line": 418,
+       "at": "strictEqual(retries, 1)",
+       "text": "Retried within the backoff window"
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "mechanical": [],
+ "url": "https://github.com/nodejs/undici/pull/5683"
+}

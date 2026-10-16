@@ -1,0 +1,8 @@
+node_modules/
+dist/
+dist-template/
+packages/cli/template.html
+packages/app/src/artifact/langs.gen.ts
+*.log
+.DS_Store
+work/

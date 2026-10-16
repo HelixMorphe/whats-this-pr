@@ -1,0 +1,235 @@
+{
+ "version": 1,
+ "title": "Browsers can start loading assets before a slow page is ready",
+ "diagram": {
+  "view": {
+   "w": 1000,
+   "h": 700
+  },
+  "top": 30,
+  "end": 670,
+  "label": "Sequence: a client requests a page; the ASGI server calls the app through a middleware; the endpoint calls send_early_hints, and if the server advertises the early hint extension the middleware forwards the hint and the server sends a 103 with the Link header; the endpoint then returns the final 200 response through the middleware to the client",
+  "participants": [
+   {
+    "id": "client",
+    "x": 120,
+    "name": "CLIENT"
+   },
+   {
+    "id": "server",
+    "x": 380,
+    "name": "ASGI SERVER"
+   },
+   {
+    "id": "mw",
+    "x": 640,
+    "name": "MIDDLEWARE"
+   },
+   {
+    "id": "ep",
+    "x": 880,
+    "name": "ENDPOINT"
+   }
+  ],
+  "messages": [
+   {
+    "id": "req",
+    "from": "client",
+    "to": "server",
+    "y": 150,
+    "text": "GET /"
+   },
+   {
+    "id": "app",
+    "from": "server",
+    "to": "mw",
+    "y": 205,
+    "text": "scope · ext early_hint"
+   },
+   {
+    "id": "call",
+    "from": "mw",
+    "to": "ep",
+    "y": 260,
+    "text": "homepage(request)"
+   },
+   {
+    "id": "hintE",
+    "from": "ep",
+    "to": "mw",
+    "y": 345,
+    "text": "early_hint · style.css",
+    "reply": true
+   },
+   {
+    "id": "hintM",
+    "from": "mw",
+    "to": "server",
+    "y": 395,
+    "text": "forward early_hint",
+    "reply": true
+   },
+   {
+    "id": "h103",
+    "from": "server",
+    "to": "client",
+    "y": 445,
+    "text": "103 · link: style.css",
+    "reply": true
+   },
+   {
+    "id": "respE",
+    "from": "ep",
+    "to": "mw",
+    "y": 530,
+    "text": "start 200 · html",
+    "reply": true
+   },
+   {
+    "id": "respM",
+    "from": "mw",
+    "to": "server",
+    "y": 580,
+    "text": "start 200 · html",
+    "reply": true
+   },
+   {
+    "id": "resp",
+    "from": "server",
+    "to": "client",
+    "y": 630,
+    "text": "200 · html",
+    "reply": true
+   }
+  ],
+  "frame": {
+   "x": 70,
+   "y": 300,
+   "w": 870,
+   "h": 170,
+   "kind": "opt",
+   "branches": [
+    {
+     "label": "extension advertised"
+    }
+   ]
+  }
+ },
+ "inputs": [
+  {
+   "id": "ext",
+   "kind": "switch",
+   "label": "SERVER ADVERTISES 103"
+  },
+  {
+   "id": "mw",
+   "kind": "choice",
+   "label": "MIDDLEWARE",
+   "options": [
+    {
+     "value": "base",
+     "label": "Dispatch middleware"
+    },
+    {
+     "value": "gzip",
+     "label": "Gzip compression"
+    }
+   ]
+  },
+  {
+   "id": "ep",
+   "kind": "choice",
+   "label": "ENDPOINT",
+   "options": [
+    {
+     "value": "fn",
+     "label": "Function route"
+    },
+    {
+     "value": "cls",
+     "label": "HTTPEndpoint class"
+    }
+   ]
+  }
+ ],
+ "initial": {
+  "ext": true,
+  "mw": "base",
+  "ep": "fn"
+ },
+ "rules": [
+  {
+   "show": [
+    "req",
+    "app",
+    "call",
+    "respE",
+    "respM",
+    "resp"
+   ],
+   "hot": [
+    "ep"
+   ]
+  },
+  {
+   "when": {
+    "ext": true
+   },
+   "show": [
+    "hintE",
+    "hintM",
+    "h103"
+   ],
+   "hot": [
+    "mw"
+   ],
+   "frame": "ink"
+  },
+  {
+   "when": {
+    "ext": false
+   },
+   "labels": {
+    "app": "scope · no early_hint"
+   },
+   "frame": "off"
+  },
+  {
+   "when": {
+    "mw": "base"
+   },
+   "labels": {
+    "call": "call_next → homepage"
+   }
+  },
+  {
+   "when": {
+    "mw": "gzip"
+   },
+   "labels": {
+    "call": "app(…, compressing send)",
+    "hintM": "pass early_hint through",
+    "respM": "200 · gzip if ≥ 500 B",
+    "resp": "200 · html, maybe gzip"
+   }
+  },
+  {
+   "when": {
+    "mw": "base",
+    "ep": "cls"
+   },
+   "labels": {
+    "call": "call_next → Page.get"
+   }
+  },
+  {
+   "when": {
+    "mw": "gzip",
+    "ep": "cls"
+   },
+   "labels": {
+    "call": "Page.get(request)"
+   }
+  }
+ ]
+}

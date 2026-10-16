@@ -1,0 +1,25 @@
+whats-this-pr
+Copyright (c) 2026 HelixMorphe. Licensed under the MIT License (see LICENSE).
+
+The page template (template.html in the whats-this-pr npm package) is a build of
+packages/app and bundles the following third-party software and fonts, each
+under its own licence:
+
+  React, React DOM ............ MIT ........ https://github.com/facebook/react
+  Motion ...................... MIT ........ https://github.com/motiondivision/motion
+  Shiki (grammars, themes) .... MIT ........ https://github.com/shikijs/shiki
+  @pierre/diffs ............... Apache-2.0 . https://www.npmjs.com/package/@pierre/diffs
+  Radix UI .................... MIT ........ https://github.com/radix-ui/primitives
+  Lucide ...................... ISC ........ https://github.com/lucide-icons/lucide
+  Tailwind CSS ................ MIT ........ https://github.com/tailwindlabs/tailwindcss
+  tw-animate-css .............. MIT ........ https://github.com/Wombosvideo/tw-animate-css
+  class-variance-authority .... Apache-2.0 . https://github.com/joe-bell/cva
+  Inter (font) ................ OFL-1.1 .... https://github.com/rsms/inter
+  Geist Mono (font) ........... OFL-1.1 .... https://github.com/vercel/geist-font
+  Caveat (font) ............... OFL-1.1 .... https://github.com/googlefonts/caveat
+
+The example pages under examples/ and plugins/whats-this-pr/skills/whats-this-pr/examples
+describe public pull requests in caddyserver/caddy (Apache-2.0), honojs/hono (MIT),
+nodejs/undici (MIT), Kludex/starlette (BSD-3-Clause), Kludex/uvicorn (BSD-3-Clause)
+and gin-gonic/gin (MIT); each pr.diff is that pull request's diff, under its
+project's licence.

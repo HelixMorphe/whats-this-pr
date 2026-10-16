@@ -1,0 +1,165 @@
+{
+ "repo": "caddyserver/caddy",
+ "number": 8168,
+ "url": "https://github.com/caddyserver/caddy/pull/8168",
+ "title": "reverseproxy: Only retry responses for expressions that use response data",
+ "author": "jayhemnani9910",
+ "agent": "Claude Code",
+ "spotlights": [
+  {
+   "id": "mixed",
+   "label": "An OR with a response placeholder still retries",
+   "why": "The check is per matcher set, not per clause. `{http.request.method} == \"POST\" || {rp.status_code} == 502` reads response data, so it is still evaluated against every response and still retries every successful POST.",
+   "step": 2
+  },
+  {
+   "id": "list",
+   "label": "Response placeholders are a hand-kept list",
+   "why": "Only status_code, status_text, upstream.latency, upstream.latency_ms and header.* count. A response placeholder added to reverseProxy later must also be added here, or expressions that use it silently stop retrying responses.",
+   "step": 2
+  },
+  {
+   "id": "body",
+   "label": "Response retries of a POST still send no body",
+   "why": "Unchanged by this PR: without request_buffers the body is read by the first attempt, so a retried POST goes out empty (the issue shows it). The response-retry tests only use GET. Reasoned from the code, not run.",
+   "step": 3
+  }
+ ],
+ "steps": [
+  {
+   "title": "Record the placeholders an expression reads",
+   "why": "While provisioning, MatchExpression walks its checked CEL AST and keeps the name passed to every ph() call; `{x}` is already expanded to `ph(req, \"x\")` by then. A name that is not a string literal is kept as \"\". Placeholders() hands out a copy.",
+   "consequence": "Every provisioned expression knows which placeholders it reads. Nothing uses it yet.",
+   "spotlights": [],
+   "hunks": [
+    {
+     "file": "celmatcher.go",
+     "notes": [
+      [
+       "placeholders []string",
+       "Filled once, at provision time",
+       "placeholders"
+      ],
+      [
+       "m.placeholders = celPlaceholderNames(checked.NativeRep().Expr())",
+       "Walks the checked AST, not the text",
+       "checked.NativeRep().Expr()"
+      ],
+      [
+       "return slices.Clone(m.placeholders)",
+       "Copy: callers cannot mutate shared state",
+       "slices.Clone"
+      ],
+      [
+       "name := \"\"",
+       "Computed name: recorded as unknown",
+       "\"\""
+      ],
+      [
+       "len(args) == 2 && isCELStringLiteral(args[1])",
+       "Only literal names are read",
+       "isCELStringLiteral(args[1])"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "title": "Retry a response only when the expression reads it",
+   "why": "After the round trip, reverseProxy used to evaluate every retry_match set holding any expression. matcherSetReferencesResponse now evaluates a set only if one of its expressions reads status_code, status_text, upstream.latency(_ms), a header.* placeholder, or a name unknown until evaluation.",
+   "consequence": "A request-only expression is a request condition again, as before v2.11.3: a 200 is passed through. tryAgain, which decides retries after transport errors, is untouched.",
+   "spotlights": [
+    "mixed",
+    "list"
+   ],
+   "hunks": [
+    {
+     "file": "reverseproxy.go",
+     "notes": [
+      [
+       "if !matcherSetReferencesResponse(matcherSet) {",
+       "Was: any expression at all",
+       "matcherSetReferencesResponse"
+      ],
+      [
+       "\"http.reverse_proxy.status_code\",",
+       "Set just before this check",
+       "\"http.reverse_proxy.status_code\""
+      ],
+      [
+       "\"http.reverse_proxy.upstream.latency_ms\",",
+       "upstream.host etc. deliberately left out",
+       "\"http.reverse_proxy.upstream.latency_ms\""
+      ],
+      [
+       "const responseHeaderPlaceholderPrefix = \"http.reverse_proxy.header.\"",
+       "The only prefix match",
+       "\"http.reverse_proxy.header.\""
+      ],
+      [
+       "if name == \"\" ||",
+       "Unknown name: evaluate, as before",
+       "name == \"\""
+      ],
+      [
+       "for _, name := range expr.Placeholders() {",
+       "One response placeholder flags the set",
+       "expr.Placeholders()"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "title": "Prove both forms retry and request-only ones do not",
+   "why": "TestResponseRetryStatusCode now runs both `{http.reverse_proxy.status_code}` and the direct `ph(req, ...)` form. The new TestRequestOnlyExpressionDoesNotRetryResponses POSTs through two healthy upstreams with four expressions that must not retry.",
+   "consequence": "The issue case, a selection-time placeholder, an escaped placeholder in a string and a misspelt name are each hit once with a 200.",
+   "spotlights": [
+    "body"
+   ],
+   "hunks": [
+    {
+     "file": "retries_test.go",
+     "notes": [
+      [
+       "`ph(req, \"http.reverse_proxy.status_code\") in [502, 503]`,",
+       "Direct ph() call still retries",
+       "ph(req"
+      ],
+      [
+       "req := httptest.NewRequest(http.MethodGet, \"http://example.com/\", nil)",
+       "GET: no body to replay",
+       "http.MethodGet"
+      ],
+      [
+       "`{http.request.method} == \"POST\"`,",
+       "The case from the issue",
+       "{http.request.method}"
+      ],
+      [
+       "`{http.reverse_proxy.upstream.host} == \"127.0.0.1\"`,",
+       "Set before the round trip",
+       "upstream.host"
+      ],
+      [
+       "`{http.request.uri.path} != \"\\{http.reverse_proxy.status_code}\"`,",
+       "Escaped: a string, not a placeholder",
+       "\\{"
+      ],
+      [
+       "`{http.reverse_proxy.status_codes} == null`,",
+       "Misspelt: exact names only",
+       "status_codes"
+      ],
+      [
+       "if hits.Load() != 1 {",
+       "One upstream hit, no retry",
+       "hits.Load() != 1"
+      ]
+     ]
+    }
+   ]
+  }
+ ],
+ "mechanical": []
+}

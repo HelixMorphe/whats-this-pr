@@ -1,0 +1,227 @@
+{
+ "repo": "Kludex/starlette",
+ "number": 3435,
+ "url": "https://github.com/Kludex/starlette/pull/3435",
+ "title": "Add HTTP 103 Early Hints support",
+ "author": "Kludex",
+ "agent": "Unknown",
+ "spotlights": [
+  {
+   "id": "noop",
+   "label": "No signal when hints are ignored",
+   "why": "send_early_hints returns None whether it sent a hint or skipped it. Hypercorn advertises the extension only on HTTP/2 and HTTP/3, and TestClient never advertises it, so a TestClient test always takes the silent path.",
+   "step": 1
+  },
+  {
+   "id": "encode",
+   "label": "Link values are sent unvalidated",
+   "why": "Each value is only encoded as latin-1: a non-latin-1 URL raises UnicodeEncodeError, and CR/LF or a malformed Link value is passed to the server unchecked. Header validation is left to the ASGI server.",
+   "step": 1
+  },
+  {
+   "id": "push",
+   "label": "HTTPEndpoint push promises now send",
+   "why": "Before, the Request in HTTPEndpoint and in a BaseHTTPMiddleware dispatch had no send channel, so send_push_promise raised \"Send channel has not been made available\". Now it sends, or no-ops. Code that relied on that error behaves differently.",
+   "step": 2
+  },
+  {
+   "id": "late",
+   "label": "A hint after response start crashes the middleware",
+   "why": "Nothing checks that http.response.start has not gone out yet. Behind BaseHTTPMiddleware, a hint sent from a streaming body lands in body_stream and fails its \"Unexpected message\" assertion. Hypercorn sends a 103 only before the response starts.",
+   "step": 3
+  }
+ ],
+ "steps": [
+  {
+   "title": "Add Request.send_early_hints",
+   "why": "A new method on Request takes one required Link value plus any more, positional-only. If the scope advertises http.response.early_hint, it encodes them as latin-1 and sends one http.response.early_hint event through the Request's send channel; otherwise it does nothing.",
+   "consequence": "Plain function routes can send a 103 right away, since request_response already builds Request with send. HTTPEndpoint and BaseHTTPMiddleware can't yet.",
+   "spotlights": [
+    "noop",
+    "encode"
+   ],
+   "hunks": [
+    {
+     "file": "starlette/requests.py",
+     "notes": [
+      [
+       "async def send_early_hints(self, link: str, /, *additional_links: str)",
+       "First link required, positional-only",
+       "link: str, /"
+      ],
+      [
+       "if \"http.response.early_hint\" in self.scope.get(\"extensions\", {}):",
+       "Silent no-op without the extension",
+       "\"http.response.early_hint\""
+      ],
+      [
+       "value.encode(\"latin-1\")",
+       "Only encoding: no Link syntax check",
+       "encode(\"latin-1\")"
+      ],
+      [
+       "await self._send({\"type\": \"http.response.early_hint\", \"links\": raw_links})",
+       "One event for all links",
+       "\"links\": raw_links"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "title": "Give HTTPEndpoint and middleware requests a send channel",
+   "why": "HTTPEndpoint.dispatch now builds its Request with send=self.send. BaseHTTPMiddleware's _CachedRequest takes send as a required third argument, so the request a dispatch function sees can send too.",
+   "consequence": "send_early_hints (and send_push_promise) work from an HTTPEndpoint method and from a dispatch function. A hint from dispatch goes straight to the outer send.",
+   "spotlights": [
+    "push"
+   ],
+   "hunks": [
+    {
+     "file": "starlette/endpoints.py",
+     "notes": [
+      [
+       "request = Request(self.scope, receive=self.receive, send=self.send)",
+       "Was empty_send: sending raised RuntimeError",
+       "send=self.send"
+      ]
+     ]
+    },
+    {
+     "file": "starlette/middleware/base.py",
+     "hunks": [
+      0,
+      1
+     ],
+     "notes": [
+      [
+       "def __init__(self, scope: Scope, receive: Receive, send: Send):",
+       "Required now: private, but signature breaks",
+       "send: Send"
+      ],
+      [
+       "request = _CachedRequest(scope, receive, send)",
+       "The outer send, not the stream",
+       "send)"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "title": "Forward hints through BaseHTTPMiddleware and GZip",
+   "why": "call_next used to read one optional debug message and then assert http.response.start. It now loops: debug messages set info, early_hint messages are sent straight to the outer send, and the first other message ends the loop. GZipMiddleware passes early_hint through untouched, like trailers.",
+   "consequence": "A downstream hint reaches the client before the final response under either middleware. Before, a raw early_hint event failed the start assertion in BaseHTTPMiddleware and GZip dropped it without a word.",
+   "spotlights": [
+    "late"
+   ],
+   "hunks": [
+    {
+     "file": "starlette/middleware/base.py",
+     "hunks": [
+      2
+     ],
+     "notes": [
+      [
+       "while True:",
+       "Any number of events before start",
+       "while True"
+      ],
+      [
+       "info = message[\"info\"]",
+       "Strict now: no info is KeyError",
+       "message[\"info\"]"
+      ],
+      [
+       "await send(message)",
+       "Forwarded now, before dispatch returns",
+       "send(message)"
+      ],
+      [
+       "break",
+       "Next message must be start",
+       "break"
+      ]
+     ]
+    },
+    {
+     "file": "starlette/middleware/gzip.py",
+     "notes": [
+      [
+       "elif message_type in (\"http.response.early_hint\", \"http.response.trailers\"):",
+       "Used to fall through: dropped",
+       "\"http.response.early_hint\""
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "title": "Prove hints at each layer",
+   "why": "Unit tests cover the event shape with two links, the silent no-op without the extension, and the RuntimeError without a send channel. Integration tests check that HTTPEndpoint, BaseHTTPMiddleware (hints from dispatch and endpoint, in order) and GZipMiddleware (gzip and identity) put the hint before http.response.start.",
+   "consequence": "Ordering is pinned at every layer the PR touches. No test sends a hint after the response has started.",
+   "spotlights": [],
+   "hunks": [
+    {
+     "file": "tests/test_requests.py",
+     "notes": [
+      [
+       "send.assert_not_awaited()",
+       "No extension: nothing sent",
+       "assert_not_awaited"
+      ],
+      [
+       "with pytest.raises(RuntimeError, match=\"Send channel has not been made available\"):",
+       "Extension but no send: still raises",
+       "pytest.raises(RuntimeError"
+      ]
+     ]
+    },
+    {
+     "file": "tests/test_endpoints.py",
+     "notes": [
+      [
+       "assert messages[1][\"type\"] == \"http.response.start\"",
+       "Hint lands before start",
+       "messages[1]"
+      ]
+     ]
+    },
+    {
+     "file": "tests/middleware/test_base.py",
+     "notes": [
+      [
+       "\"links\": [b\"</middleware.css>; rel=preload; as=style\"],",
+       "Dispatch hint goes first",
+       "middleware.css"
+      ],
+      [
+       "assert events[2][\"type\"] == \"http.response.start\"",
+       "Both hints precede start",
+       "events[2]"
+      ]
+     ]
+    },
+    {
+     "file": "tests/middleware/test_gzip.py",
+     "notes": [
+      [
+       "@pytest.mark.parametrize(\"encoding\", [\"gzip\", \"identity\"])",
+       "Both responders pass it through",
+       "\"identity\""
+      ]
+     ]
+    }
+   ]
+  }
+ ],
+ "mechanical": [
+  {
+   "kind": "Docs",
+   "why": "A new usage page with a runnable example, and its nav entry. Claims Hypercorn support over HTTP/2 and HTTP/3, which matches Hypercorn's source.",
+   "files": [
+    "docs/early-hints.md",
+    "mkdocs.yml"
+   ]
+  }
+ ]
+}

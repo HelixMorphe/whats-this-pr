@@ -1,0 +1,233 @@
+{
+ "repo": "honojs/hono",
+ "number": 4915,
+ "url": "https://github.com/honojs/hono/pull/4915",
+ "title": "feat(cache): key cache entries by configured vary headers",
+ "author": "usualoma",
+ "agent": "Unknown",
+ "spotlights": [
+  {
+   "id": "base",
+   "label": "The body's Before column predates v4.12.18",
+   "why": "At the base commit, addHeader wrote Vary onto the response before shouldSkipCache looked for it, so with options.vary set nothing was ever stored (the old test asserted X-Count 2). The shared single entry the body describes is the behaviour before v4.12.18; for users on the base, this PR turns caching back on.",
+   "step": 1
+  },
+  {
+   "id": "fanout",
+   "label": "Raw header values split variants finely",
+   "why": "The key takes the request header value verbatim, so \"en-US,en;q=0.9\" and \"en\" are different entries, and a vary on Accept-Encoding or User-Agent can multiply entries per URL. Worth a line in the docs on which headers are sensible to vary on.",
+   "step": 2
+  },
+  {
+   "id": "keygen",
+   "label": "keyGenerator keys get the headers appended again",
+   "why": "The suffix is added after options.keyGenerator runs, so a generator that already folds in Accept-Language doubles it. The body argues this only over-splits; no test covers keyGenerator together with vary.",
+   "step": 2
+  },
+  {
+   "id": "empty",
+   "label": "Missing and empty header share one key",
+   "why": "A missing header becomes \"\" via ?? '', so a request with no Accept-Language and one with an empty Accept-Language hit the same entry. Probably harmless, but it is not what the test name \"missing and present ... separate\" might suggest.",
+   "step": 2
+  },
+  {
+   "id": "sort",
+   "label": "Merged Vary header is no longer sorted",
+   "why": "The old addHeader lowercased, deduplicated and sorted the merged list. The new one keeps configured names first, then the response's, in insertion order, so the header text can change for apps that set both.",
+   "step": 3
+  },
+  {
+   "id": "mock",
+   "label": "Tests use a Map, not a real Cache API",
+   "why": "The new tests stub caches with a Map keyed by the string. Whether every runtime accepts a key like https://host/path::accept-language=en (it is parsed as a URL) is not exercised here.",
+   "step": 4
+  }
+ ],
+ "steps": [
+  {
+   "title": "Skip caching only when the response varies on unconfigured headers",
+   "why": "parseVaryDirectives turns a Vary value or the vary option into trimmed lowercase names. shouldSkipCache now skips a response with Vary only if some name is outside options.vary, and the call site parses the response Vary before addHeader adds the configured names.",
+   "consequence": "A response with no Vary, or one covered by options.vary, can be stored again; Vary: * and uncovered names still skip, as do private/no-store and Set-Cookie.",
+   "spotlights": [
+    "base"
+   ],
+   "hunks": [
+    {
+     "file": "src/middleware/cache/index.ts",
+     "hunks": [
+      0,
+      6
+     ],
+     "notes": [
+      [
+       "const parseVaryDirectives = ",
+       "Trims, lowercases, drops empty names",
+       "parseVaryDirectives"
+      ],
+      [
+       "(responseVary.length &&",
+       "Only a Vary the handler set counts",
+       "responseVary.length"
+      ],
+      [
+       "responseVary.some((name) => !optionsVaryDirectives.has(name))",
+       "Any unconfigured name, including *, skips",
+       "responseVary.some"
+      ],
+      [
+       "res.headers.has('Set-Cookie')",
+       "Cookie and Cache-Control rules unchanged"
+      ],
+      [
+       "const responseVary = parseVaryDirectives(c.res.headers.get('Vary'))",
+       "Read before addHeader writes Vary",
+       "parseVaryDirectives"
+      ],
+      [
+       "if (shouldSkipCache(c.res, varyDirectives, responseVary)) {",
+       "Old check saw the added Vary: always skipped",
+       "shouldSkipCache"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "title": "Key each entry by the configured request header values",
+   "why": "options.vary is parsed once into a Set of lowercase names (undefined when empty). After the URL or keyGenerator key, the middleware appends ::name=value for each configured header, URL-encoded.",
+   "consequence": "Requests that differ in a configured header read and write different cache entries, so a stored variant is only served to a matching request.",
+   "spotlights": [
+    "fanout",
+    "keygen",
+    "empty"
+   ],
+   "hunks": [
+    {
+     "file": "src/middleware/cache/index.ts",
+     "hunks": [
+      1,
+      2,
+      5
+     ],
+     "notes": [
+      [
+       "Adds the configured request headers to the cache key variants",
+       "Docs now promise key variants",
+       "Adds the configured request headers"
+      ],
+      [
+       "const varyDirectives = optionsVaryList.length ? new Set(optionsVaryList) : undefined",
+       "Empty option: no vary handling at all",
+       "undefined"
+      ],
+      [
+       "if (varyDirectives?.has('*')) {",
+       "Exact '*' after trimming, not substring",
+       "has('*')"
+      ],
+      [
+       "for (const directive of varyDirectives) {",
+       "Configured order, lowercase names",
+       "varyDirectives"
+      ],
+      [
+       "const value = c.req.raw.headers.get(directive) ?? ''",
+       "Missing and empty value collide",
+       "?? ''"
+      ],
+      [
+       "key += `::${directive}=${encodeURIComponent(value)}`",
+       "Appended after keyGenerator too",
+       "key +="
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "title": "Build the response Vary header from the parsed lists",
+   "why": "addHeader now receives the parsed response Vary. With none, it writes the configured names; otherwise it merges both sets and writes * if either contains it.",
+   "consequence": "Clients still see every configured header in Vary, and the header no longer has to be re-split inside addHeader.",
+   "spotlights": [
+    "sort"
+   ],
+   "hunks": [
+    {
+     "file": "src/middleware/cache/index.ts",
+     "hunks": [
+      3,
+      4
+     ],
+     "notes": [
+      [
+       "const addHeader = (c: Context, responseVary: string[]) => {",
+       "Takes the already-parsed response Vary",
+       "responseVary"
+      ],
+      [
+       "c.header('Vary', Array.from(varyDirectives).join(', '))",
+       "No response Vary: configured names only",
+       "Array.from(varyDirectives)"
+      ],
+      [
+       "const merged = new Set(varyDirectives)",
+       "No .sort(): configured names first",
+       "new Set"
+      ],
+      [
+       "c.header('Vary', '*')",
+       "Star still collapses the whole header",
+       "'*'"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "title": "Prove variants, misses and the remaining skips",
+   "why": "A store-backed cache stub replaces the spy for the new cases. The old \"not cache\" test flips to expect a hit, and new tests cover per-language variants, a missing header, two configured headers, a covered handler Vary, an uncovered Cookie and Vary: *.",
+   "consequence": "Each row of the body's behaviour table has a test, against a Map stand-in rather than a runtime cache.",
+   "spotlights": [
+    "mock"
+   ],
+   "hunks": [
+    {
+     "file": "src/middleware/cache/index.test.ts",
+     "notes": [
+      [
+       "const store = new Map<string | Request, Response>()",
+       "Map stand-in, not a real Cache API",
+       "new Map"
+      ],
+      [
+       "it('Should set configured Vary header and cache by the configured request header value'",
+       "Was: set Vary but never cache",
+       "and cache"
+      ],
+      [
+       "expect(res.headers.get('X-Count')).toBe('1')",
+       "Was 2: second request is a hit",
+       "toBe('1')"
+      ],
+      [
+       "expect(ja.headers.get('X-Count')).toBe('2')",
+       "ja misses although en is cached",
+       "toBe('2')"
+      ],
+      [
+       "expect(missing.headers.get('X-Count')).toBe('1')",
+       "No header is its own variant",
+       "toBe('1')"
+      ],
+      [
+       "c.header('Vary', 'Accept-Language, Cookie')",
+       "Uncovered Cookie still skips",
+       "Cookie"
+      ]
+     ]
+    }
+   ]
+  }
+ ],
+ "mechanical": []
+}

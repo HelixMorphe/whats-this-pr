@@ -1,0 +1,190 @@
+{
+  "version": 1,
+  "title": "Access logs now show the path exactly as the client sent it",
+  "diagram": {
+    "view": {
+      "w": 1000,
+      "h": 470
+    },
+    "top": 30,
+    "end": 440,
+    "label": "Sequence: the client sends a request target, uvicorn hands the app the decoded path, the app answers 200, and uvicorn writes the access line from the raw target before replying",
+    "participants": [
+      {
+        "id": "client",
+        "x": 110,
+        "name": "CLIENT"
+      },
+      {
+        "id": "uvicorn",
+        "x": 340,
+        "name": "UVICORN"
+      },
+      {
+        "id": "log",
+        "x": 640,
+        "name": "ACCESS LOG"
+      },
+      {
+        "id": "app",
+        "x": 890,
+        "name": "ASGI APP"
+      }
+    ],
+    "messages": [
+      {
+        "id": "req",
+        "from": "client",
+        "to": "uvicorn",
+        "y": 150,
+        "text": "GET /one%2Ftwo"
+      },
+      {
+        "id": "scope",
+        "from": "uvicorn",
+        "to": "app",
+        "y": 210,
+        "text": "scope · path=/one/two",
+        "labelX": 765
+      },
+      {
+        "id": "start",
+        "from": "app",
+        "to": "uvicorn",
+        "y": 270,
+        "text": "response.start · 200",
+        "reply": true,
+        "labelX": 765
+      },
+      {
+        "id": "line",
+        "from": "uvicorn",
+        "to": "log",
+        "y": 330,
+        "text": "\"GET /one%2Ftwo\" 200"
+      },
+      {
+        "id": "resp",
+        "from": "uvicorn",
+        "to": "client",
+        "y": 390,
+        "text": "200 OK",
+        "reply": true
+      }
+    ]
+  },
+  "inputs": [
+    {
+      "id": "target",
+      "kind": "choice",
+      "label": "REQUEST TARGET",
+      "options": [
+        {
+          "value": "slash",
+          "label": "%2F in path"
+        },
+        {
+          "value": "letter",
+          "label": "%41 in path"
+        },
+        {
+          "value": "quotes",
+          "label": "Quotes"
+        },
+        {
+          "value": "brackets",
+          "label": "< > in path"
+        }
+      ]
+    },
+    {
+      "id": "before",
+      "kind": "switch",
+      "label": "BEFORE THIS PR"
+    }
+  ],
+  "initial": {
+    "target": "slash",
+    "before": false
+  },
+  "rules": [
+    {
+      "show": [
+        "req",
+        "scope",
+        "start",
+        "line",
+        "resp"
+      ],
+      "hot": [
+        "uvicorn"
+      ]
+    },
+    {
+      "when": {
+        "target": "letter"
+      },
+      "labels": {
+        "req": "GET /%41",
+        "scope": "scope · path=/A",
+        "line": "\"GET /%41\" 200"
+      }
+    },
+    {
+      "when": {
+        "target": "quotes"
+      },
+      "labels": {
+        "req": "GET /foo\"bar?a\"b",
+        "scope": "scope · path=/foo\"bar",
+        "line": "\"GET /foo%22bar?a%22b\" 200"
+      }
+    },
+    {
+      "when": {
+        "target": "brackets"
+      },
+      "labels": {
+        "req": "GET /a<b>",
+        "scope": "scope · path=/a<b>",
+        "line": "\"GET /a<b>\" 200"
+      }
+    },
+    {
+      "when": {
+        "before": true,
+        "target": "slash"
+      },
+      "labels": {
+        "line": "\"GET /one/two\" 200"
+      }
+    },
+    {
+      "when": {
+        "before": true,
+        "target": "letter"
+      },
+      "labels": {
+        "line": "\"GET /A\" 200"
+      }
+    },
+    {
+      "when": {
+        "before": true,
+        "target": "quotes"
+      },
+      "labels": {
+        "line": "\"GET /foo%22bar?a\"b\" 200"
+      }
+    },
+    {
+      "when": {
+        "before": true,
+        "target": "brackets"
+      },
+      "labels": {
+        "line": "\"GET /a%3Cb%3E\" 200"
+      }
+    }
+  ]
+}

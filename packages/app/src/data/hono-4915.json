@@ -1,0 +1,240 @@
+{
+ "repo": "honojs/hono",
+ "number": 4915,
+ "title": "feat(cache): key cache entries by configured vary headers",
+ "author": "usualoma",
+ "agent": "Unknown",
+ "files": 2,
+ "add": 227,
+ "del": 41,
+ "ticket": {
+  "key": "No ticket",
+  "title": "feat(cache): key cache entries by configured vary headers"
+ },
+ "spotlights": [
+  {
+   "id": "base",
+   "label": "The body's Before column predates v4.12.18",
+   "why": "At the base commit, addHeader wrote Vary onto the response before shouldSkipCache looked for it, so with options.vary set nothing was ever stored (the old test asserted X-Count 2). The shared single entry the body describes is the behaviour before v4.12.18; for users on the base, this PR turns caching back on.",
+   "step": 1
+  },
+  {
+   "id": "fanout",
+   "label": "Raw header values split variants finely",
+   "why": "The key takes the request header value verbatim, so \"en-US,en;q=0.9\" and \"en\" are different entries, and a vary on Accept-Encoding or User-Agent can multiply entries per URL. Worth a line in the docs on which headers are sensible to vary on.",
+   "step": 2
+  },
+  {
+   "id": "keygen",
+   "label": "keyGenerator keys get the headers appended again",
+   "why": "The suffix is added after options.keyGenerator runs, so a generator that already folds in Accept-Language doubles it. The body argues this only over-splits; no test covers keyGenerator together with vary.",
+   "step": 2
+  },
+  {
+   "id": "empty",
+   "label": "Missing and empty header share one key",
+   "why": "A missing header becomes \"\" via ?? '', so a request with no Accept-Language and one with an empty Accept-Language hit the same entry. Probably harmless, but it is not what the test name \"missing and present ... separate\" might suggest.",
+   "step": 2
+  },
+  {
+   "id": "sort",
+   "label": "Merged Vary header is no longer sorted",
+   "why": "The old addHeader lowercased, deduplicated and sorted the merged list. The new one keeps configured names first, then the response's, in insertion order, so the header text can change for apps that set both.",
+   "step": 3
+  },
+  {
+   "id": "mock",
+   "label": "Tests use a Map, not a real Cache API",
+   "why": "The new tests stub caches with a Map keyed by the string. Whether every runtime accepts a key like https://host/path::accept-language=en (it is parsed as a URL) is not exercised here.",
+   "step": 4
+  }
+ ],
+ "steps": [
+  {
+   "n": 1,
+   "title": "Skip caching only when the response varies on unconfigured headers",
+   "why": "parseVaryDirectives turns a Vary value or the vary option into trimmed lowercase names. shouldSkipCache now skips a response with Vary only if some name is outside options.vary, and the call site parses the response Vary before addHeader adds the configured names.",
+   "consequence": "A response with no Vary, or one covered by options.vary, can be stored again; Vary: * and uncovered names still skip, as do private/no-store and Set-Cookie.",
+   "spotlights": [
+    "base"
+   ],
+   "hunks": [
+    {
+     "file": "src/middleware/cache/index.ts",
+     "isNew": false,
+     "patch": "diff --git a/src/middleware/cache/index.ts b/src/middleware/cache/index.ts\nindex fc4d18fce1..c058d90653 100644\n--- a/src/middleware/cache/index.ts\n+++ b/src/middleware/cache/index.ts\n@@ -12,26 +12,28 @@ import type { StatusCode } from '../../utils/http-status'\n  */\n const defaultCacheableStatusCodes: ReadonlyArray<StatusCode> = [200]\n \n-const shouldSkipCache = (res: Response) => {\n-  if (res.headers.has('Vary')) {\n-    return true\n-  }\n-\n-  const cacheControl = res.headers.get('Cache-Control')\n-  if (\n-    cacheControl &&\n-    /(?:^|,\\s*)(?:private|no-(?:store|cache))(?:\\s*(?:=|,|$))/i.test(cacheControl)\n-  ) {\n-    return true\n-  }\n+const shouldSkipCacheControl = (cacheControl: string | null): boolean =>\n+  !!cacheControl && /(?:^|,\\s*)(?:private|no-(?:store|cache))(?:\\s*(?:=|,|$))/i.test(cacheControl)\n \n-  if (res.headers.has('Set-Cookie')) {\n-    return true\n+const parseVaryDirectives = (vary: string | string[] | null | undefined): string[] => {\n+  if (vary == null) {\n+    return []\n   }\n-\n-  return false\n+  return (Array.isArray(vary) ? vary : vary.split(','))\n+    .map((directive) => directive.trim().toLowerCase())\n+    .filter(Boolean)\n }\n \n+const shouldSkipCache = (\n+  res: Response,\n+  optionsVaryDirectives: Set<string> | undefined,\n+  responseVary: string[]\n+): boolean =>\n+  (responseVary.length &&\n+    (!optionsVaryDirectives || responseVary.some((name) => !optionsVaryDirectives.has(name)))) ||\n+  shouldSkipCacheControl(res.headers.get('Cache-Control')) ||\n+  res.headers.has('Set-Cookie')\n+\n /**\n  * Cache Middleware for Hono.\n  *\n@@ -161,9 +164,10 @@ export const cache = (options: {\n     if (!cacheableStatusCodes.has(c.res.status)) {\n       return\n     }\n-    addHeader(c)\n+    const responseVary = parseVaryDirectives(c.res.headers.get('Vary'))\n+    addHeader(c, responseVary)\n \n-    if (shouldSkipCache(c.res)) {\n+    if (shouldSkipCache(c.res, varyDirectives, responseVary)) {\n       return\n     }\n \n",
+     "notes": [
+      {
+       "line": 18,
+       "at": "parseVaryDirectives",
+       "text": "Trims, lowercases, drops empty names"
+      },
+      {
+       "line": 32,
+       "at": "responseVary.length",
+       "text": "Only a Vary the handler set counts"
+      },
+      {
+       "line": 33,
+       "at": "responseVary.some",
+       "text": "Any unconfigured name, including *, skips"
+      },
+      {
+       "line": 35,
+       "at": "res.headers.has('Set-Cookie')",
+       "text": "Cookie and Cache-Control rules unchanged"
+      },
+      {
+       "line": 167,
+       "at": "parseVaryDirectives",
+       "text": "Read before addHeader writes Vary"
+      },
+      {
+       "line": 170,
+       "at": "shouldSkipCache",
+       "text": "Old check saw the added Vary: always skipped"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "n": 2,
+   "title": "Key each entry by the configured request header values",
+   "why": "options.vary is parsed once into a Set of lowercase names (undefined when empty). After the URL or keyGenerator key, the middleware appends ::name=value for each configured header, URL-encoded.",
+   "consequence": "Requests that differ in a configured header read and write different cache entries, so a stored variant is only served to a matching request.",
+   "spotlights": [
+    "fanout",
+    "keygen",
+    "empty"
+   ],
+   "hunks": [
+    {
+     "file": "src/middleware/cache/index.ts",
+     "isNew": false,
+     "patch": "diff --git a/src/middleware/cache/index.ts b/src/middleware/cache/index.ts\nindex fc4d18fce1..c058d90653 100644\n--- a/src/middleware/cache/index.ts\n+++ b/src/middleware/cache/index.ts\n@@ -41,7 +43,7 @@ const shouldSkipCache = (res: Response) => {\n  * @param {string | Function} options.cacheName - The name of the cache. Can be used to store multiple caches with different identifiers.\n  * @param {boolean} [options.wait=false] - A boolean indicating if Hono should wait for the Promise of the `cache.put` function to resolve before continuing with the request. Required to be true for the Deno environment.\n  * @param {string} [options.cacheControl] - A string of directives for the `Cache-Control` header.\n- * @param {string | string[]} [options.vary] - Sets the `Vary` header in the response. If the original response header already contains a `Vary` header, the values are merged, removing any duplicates.\n+ * @param {string | string[]} [options.vary] - Adds the configured request headers to the cache key variants and sets the `Vary` header in the response. If the original response header already contains a `Vary` header, the values are merged, removing any duplicates.\n  * @param {Function} [options.keyGenerator] - Generates keys for every request in the `cacheName` store. This can be used to cache data based on request parameters or context parameters.\n  * @param {number[]} [options.cacheableStatusCodes=[200]] - An array of status codes that can be cached.\n  * @param {Function | false} [options.onCacheNotAvailable] - A callback invoked when `globalThis.caches` is not available. By default, a message is logged to the console. Set to `false` to suppress the log, or provide a custom function.\n@@ -86,12 +88,11 @@ export const cache = (options: {\n   const cacheControlDirectives = options.cacheControl\n     ?.split(',')\n     .map((directive) => directive.toLowerCase())\n-  const varyDirectives = Array.isArray(options.vary)\n-    ? options.vary\n-    : options.vary?.split(',').map((directive) => directive.trim())\n+  const optionsVaryList = parseVaryDirectives(options.vary)\n+  const varyDirectives = optionsVaryList.length ? new Set(optionsVaryList) : undefined\n   // RFC 7231 Section 7.1.4 specifies that \"*\" is not allowed in Vary header.\n   // See: https://datatracker.ietf.org/doc/html/rfc7231#section-7.1.4\n-  if (options.vary?.includes('*')) {\n+  if (varyDirectives?.has('*')) {\n     throw new Error(\n       'Middleware vary configuration cannot include \"*\", as it disallows effective caching.'\n     )\n@@ -148,6 +145,12 @@ export const cache = (options: {\n     if (options.keyGenerator) {\n       key = await options.keyGenerator(c)\n     }\n+    if (varyDirectives) {\n+      for (const directive of varyDirectives) {\n+        const value = c.req.raw.headers.get(directive) ?? ''\n+        key += `::${directive}=${encodeURIComponent(value)}`\n+      }\n+    }\n \n     const cacheName =\n       typeof options.cacheName === 'function' ? await options.cacheName(c) : options.cacheName\n",
+     "notes": [
+      {
+       "line": 46,
+       "at": "Adds the configured request headers",
+       "text": "Docs now promise key variants"
+      },
+      {
+       "line": 92,
+       "at": "undefined",
+       "text": "Empty option: no vary handling at all"
+      },
+      {
+       "line": 95,
+       "at": "has('*')",
+       "text": "Exact '*' after trimming, not substring"
+      },
+      {
+       "line": 149,
+       "at": "varyDirectives",
+       "text": "Configured order, lowercase names"
+      },
+      {
+       "line": 150,
+       "at": "?? ''",
+       "text": "Missing and empty value collide"
+      },
+      {
+       "line": 151,
+       "at": "key +=",
+       "text": "Appended after keyGenerator too"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "n": 3,
+   "title": "Build the response Vary header from the parsed lists",
+   "why": "addHeader now receives the parsed response Vary. With none, it writes the configured names; otherwise it merges both sets and writes * if either contains it.",
+   "consequence": "Clients still see every configured header in Vary, and the header no longer has to be re-split inside addHeader.",
+   "spotlights": [
+    "sort"
+   ],
+   "hunks": [
+    {
+     "file": "src/middleware/cache/index.ts",
+     "isNew": false,
+     "patch": "diff --git a/src/middleware/cache/index.ts b/src/middleware/cache/index.ts\nindex fc4d18fce1..c058d90653 100644\n--- a/src/middleware/cache/index.ts\n+++ b/src/middleware/cache/index.ts\n@@ -101,7 +102,7 @@ export const cache = (options: {\n     options.cacheableStatusCodes ?? defaultCacheableStatusCodes\n   )\n \n-  const addHeader = (c: Context) => {\n+  const addHeader = (c: Context, responseVary: string[]) => {\n     if (cacheControlDirectives) {\n       const existingDirectives =\n         c.res.headers\n@@ -118,22 +119,18 @@ export const cache = (options: {\n     }\n \n     if (varyDirectives) {\n-      const existingDirectives =\n-        c.res.headers\n-          .get('Vary')\n-          ?.split(',')\n-          .map((d) => d.trim()) ?? []\n-\n-      const vary = Array.from(\n-        new Set(\n-          [...existingDirectives, ...varyDirectives].map((directive) => directive.toLowerCase())\n-        )\n-      ).sort()\n-\n-      if (vary.includes('*')) {\n-        c.header('Vary', '*')\n+      if (responseVary.length === 0) {\n+        c.header('Vary', Array.from(varyDirectives).join(', '))\n       } else {\n-        c.header('Vary', vary.join(', '))\n+        const merged = new Set(varyDirectives)\n+        for (const directive of responseVary) {\n+          merged.add(directive)\n+        }\n+        if (merged.has('*')) {\n+          c.header('Vary', '*')\n+        } else {\n+          c.header('Vary', Array.from(merged).join(', '))\n+        }\n       }\n     }\n   }\n",
+     "notes": [
+      {
+       "line": 105,
+       "at": "responseVary",
+       "text": "Takes the already-parsed response Vary"
+      },
+      {
+       "line": 123,
+       "at": "Array.from(varyDirectives)",
+       "text": "No response Vary: configured names only"
+      },
+      {
+       "line": 125,
+       "at": "new Set",
+       "text": "No .sort(): configured names first"
+      },
+      {
+       "line": 130,
+       "at": "'*'",
+       "text": "Star still collapses the whole header"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "n": 4,
+   "title": "Prove variants, misses and the remaining skips",
+   "why": "A store-backed cache stub replaces the spy for the new cases. The old \"not cache\" test flips to expect a hit, and new tests cover per-language variants, a missing header, two configured headers, a covered handler Vary, an uncovered Cookie and Vary: *.",
+   "consequence": "Each row of the body's behaviour table has a test, against a Map stand-in rather than a runtime cache.",
+   "spotlights": [
+    "mock"
+   ],
+   "hunks": [
+    {
+     "file": "src/middleware/cache/index.test.ts",
+     "isNew": false,
+     "patch": "diff --git a/src/middleware/cache/index.test.ts b/src/middleware/cache/index.test.ts\nindex 10dd764891..d16c495df6 100644\n--- a/src/middleware/cache/index.test.ts\n+++ b/src/middleware/cache/index.test.ts\n@@ -379,6 +379,24 @@ describe('Cache Middleware', () => {\n })\n \n describe('Cache Skipping Logic', () => {\n+  const stubStoreBackedCache = () => {\n+    const store = new Map<string | Request, Response>()\n+    const mockCache = {\n+      match: vi.fn((key: string | Request) => Promise.resolve(store.get(key)?.clone())),\n+      put: vi.fn((key: string | Request, response: Response) => {\n+        store.set(key, response.clone())\n+        return Promise.resolve()\n+      }),\n+      keys: vi.fn(() => Promise.resolve(Array.from(store.keys()))),\n+    }\n+\n+    vi.stubGlobal('caches', {\n+      open: vi.fn().mockResolvedValue(mockCache),\n+    })\n+\n+    return { mockCache }\n+  }\n+\n   let putSpy: ReturnType<typeof vi.fn>\n   let matchSpy: ReturnType<typeof vi.fn>\n \n@@ -477,7 +495,8 @@ describe('Cache Skipping Logic', () => {\n     }\n   )\n \n-  it('Should set configured Vary header but not cache the response', async () => {\n+  it('Should set configured Vary header and cache by the configured request header value', async () => {\n+    const { mockCache } = stubStoreBackedCache()\n     const app = new Hono()\n     let count = 0\n     app.use('*', cache({ cacheName: 'skip-test', wait: true, vary: 'Accept' }))\n@@ -490,7 +509,170 @@ describe('Cache Skipping Logic', () => {\n     await app.request('/')\n     const res = await app.request('/')\n     expect(res.headers.get('Vary')).toBe('accept')\n-    expect(res.headers.get('X-Count')).toBe('2')\n+    expect(res.headers.get('X-Count')).toBe('1')\n+    expect(mockCache.put).toHaveBeenCalledOnce()\n+  })\n+\n+  it('Should store separate variants for different Accept-Language request values', async () => {\n+    const { mockCache } = stubStoreBackedCache()\n+    const app = new Hono()\n+    let count = 0\n+    app.use('*', cache({ cacheName: 'vary-language-test', wait: true, vary: 'Accept-Language' }))\n+    app.get('/', (c) => {\n+      count++\n+      c.header('X-Count', `${count}`)\n+      return c.text(c.req.header('Accept-Language') ?? 'missing')\n+    })\n+\n+    await app.request('/', {\n+      headers: {\n+        'Accept-Language': 'en',\n+      },\n+    })\n+    const en = await app.request('/', {\n+      headers: {\n+        'Accept-Language': 'en',\n+      },\n+    })\n+    await app.request('/', {\n+      headers: {\n+        'Accept-Language': 'ja',\n+      },\n+    })\n+    const ja = await app.request('/', {\n+      headers: {\n+        'Accept-Language': 'ja',\n+      },\n+    })\n+\n+    expect(await en.text()).toBe('en')\n+    expect(en.headers.get('X-Count')).toBe('1')\n+    expect(await ja.text()).toBe('ja')\n+    expect(ja.headers.get('X-Count')).toBe('2')\n+    expect(mockCache.put).toHaveBeenCalledTimes(2)\n+  })\n+\n+  it('Should keep missing and present Vary request header values in separate variants', async () => {\n+    stubStoreBackedCache()\n+    const app = new Hono()\n+    let count = 0\n+    app.use('*', cache({ cacheName: 'vary-missing-test', wait: true, vary: 'Accept-Language' }))\n+    app.get('/', (c) => {\n+      count++\n+      c.header('X-Count', `${count}`)\n+      return c.text(c.req.header('Accept-Language') ?? 'missing')\n+    })\n+\n+    await app.request('/')\n+    await app.request('/', {\n+      headers: {\n+        'Accept-Language': 'en',\n+      },\n+    })\n+    const missing = await app.request('/')\n+    const present = await app.request('/', {\n+      headers: {\n+        'Accept-Language': 'en',\n+      },\n+    })\n+\n+    expect(await missing.text()).toBe('missing')\n+    expect(missing.headers.get('X-Count')).toBe('1')\n+    expect(await present.text()).toBe('en')\n+    expect(present.headers.get('X-Count')).toBe('2')\n+  })\n+\n+  it('Should store separate variants using multiple configured request headers', async () => {\n+    const { mockCache } = stubStoreBackedCache()\n+    const app = new Hono()\n+    let count = 0\n+    app.use(\n+      '*',\n+      cache({ cacheName: 'vary-multiple-test', wait: true, vary: ['Accept', 'Accept-Encoding'] })\n+    )\n+    app.get('/', (c) => {\n+      count++\n+      c.header('X-Count', `${count}`)\n+      return c.text(`${c.req.header('Accept')}:${c.req.header('Accept-Encoding')}`)\n+    })\n+\n+    await app.request('/', {\n+      headers: {\n+        Accept: 'text/plain',\n+        'Accept-Encoding': 'gzip',\n+      },\n+    })\n+    const same = await app.request('/', {\n+      headers: {\n+        Accept: 'text/plain',\n+        'Accept-Encoding': 'gzip',\n+      },\n+    })\n+    await app.request('/', {\n+      headers: {\n+        Accept: 'application/json',\n+        'Accept-Encoding': 'gzip',\n+      },\n+    })\n+    const differentAccept = await app.request('/', {\n+      headers: {\n+        Accept: 'application/json',\n+        'Accept-Encoding': 'gzip',\n+      },\n+    })\n+    await app.request('/', {\n+      headers: {\n+        Accept: 'text/plain',\n+        'Accept-Encoding': 'br',\n+      },\n+    })\n+    const differentEncoding = await app.request('/', {\n+      headers: {\n+        Accept: 'text/plain',\n+        'Accept-Encoding': 'br',\n+      },\n+    })\n+\n+    expect(same.headers.get('X-Count')).toBe('1')\n+    expect(differentAccept.headers.get('X-Count')).toBe('2')\n+    expect(differentEncoding.headers.get('X-Count')).toBe('3')\n+    expect(mockCache.put).toHaveBeenCalledTimes(3)\n+  })\n+\n+  it('Should store when the handler Vary header is covered by configured Vary headers', async () => {\n+    const { mockCache } = stubStoreBackedCache()\n+    const app = new Hono()\n+    app.use('*', cache({ cacheName: 'vary-covered-test', wait: true, vary: 'Accept-Language' }))\n+    app.get('/', (c) => {\n+      c.header('Vary', 'Accept-Language')\n+      return c.text('response')\n+    })\n+\n+    await app.request('/')\n+    expect(mockCache.put).toHaveBeenCalledOnce()\n+  })\n+\n+  it('Should not store when the handler adds Vary headers not covered by configured Vary headers', async () => {\n+    const app = new Hono()\n+    app.use('*', cache({ cacheName: 'skip-test', wait: true, vary: 'Accept-Language' }))\n+    app.get('/', (c) => {\n+      c.header('Vary', 'Accept-Language, Cookie')\n+      return c.text('response')\n+    })\n+\n+    await app.request('/')\n+    expect(putSpy).not.toHaveBeenCalled()\n+  })\n+\n+  it('Should not store Vary: * responses even when Vary headers are configured', async () => {\n+    const app = new Hono()\n+    app.use('*', cache({ cacheName: 'skip-test', wait: true, vary: 'Accept-Language' }))\n+    app.get('/', (c) => {\n+      c.header('Vary', '*')\n+      return c.text('response')\n+    })\n+\n+    await app.request('/')\n     expect(putSpy).not.toHaveBeenCalled()\n   })\n \n",
+     "notes": [
+      {
+       "line": 383,
+       "at": "new Map",
+       "text": "Map stand-in, not a real Cache API"
+      },
+      {
+       "line": 498,
+       "at": "and cache",
+       "text": "Was: set Vary but never cache"
+      },
+      {
+       "line": 512,
+       "at": "toBe('1')",
+       "text": "Was 2: second request is a hit"
+      },
+      {
+       "line": 551,
+       "at": "toBe('2')",
+       "text": "ja misses although en is cached"
+      },
+      {
+       "line": 580,
+       "at": "toBe('1')",
+       "text": "No header is its own variant"
+      },
+      {
+       "line": 659,
+       "at": "Cookie",
+       "text": "Uncovered Cookie still skips"
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "mechanical": [],
+ "url": "https://github.com/honojs/hono/pull/4915"
+}

@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "title": "With retryAfter: false, the server no longer sets the retry wait",
+  "diagram": {
+    "view": { "w": 1000, "h": 510 },
+    "top": 30,
+    "end": 480,
+    "label": "Sequence: the app sends a request through the retry handler; the server answers 429 with a Retry-After header; the handler waits either the header's delay or its own backoff, retries, and returns the 200 to the app",
+    "participants": [
+      { "id": "app", "x": 150, "name": "APP" },
+      { "id": "retry", "x": 500, "name": "RETRY HANDLER" },
+      { "id": "server", "x": 850, "name": "SERVER" }
+    ],
+    "messages": [
+      { "id": "req", "from": "app", "to": "retry", "y": 150, "text": "GET /" },
+      { "id": "send", "from": "retry", "to": "server", "y": 205, "text": "GET / · attempt 1" },
+      { "id": "busy", "from": "server", "to": "retry", "y": 255, "text": "429 · retry-after: 60", "reply": true },
+      { "id": "again", "from": "retry", "to": "server", "y": 335, "text": "retry · waits 500 ms" },
+      { "id": "ok", "from": "server", "to": "retry", "y": 385, "text": "200", "reply": true },
+      { "id": "resp", "from": "retry", "to": "app", "y": 440, "text": "200", "reply": true }
+    ]
+  },
+  "inputs": [
+    {
+      "id": "header",
+      "kind": "choice",
+      "label": "RETRY-AFTER HEADER",
+      "options": [
+        { "value": "sixty", "label": "60 seconds" },
+        { "value": "zero", "label": "0 seconds" },
+        { "value": "none", "label": "None" }
+      ]
+    },
+    {
+      "id": "opt",
+      "kind": "choice",
+      "label": "RETRYAFTER OPTION",
+      "options": [
+        { "value": "off", "label": "false" },
+        { "value": "on", "label": "Default (true)" }
+      ],
+      "disabledWhen": { "header": "none" }
+    },
+    { "id": "before", "kind": "switch", "label": "BEFORE THIS PR" }
+  ],
+  "initial": { "header": "sixty", "opt": "off", "before": false },
+  "rules": [
+    { "show": ["req", "send", "busy", "again", "ok", "resp"], "hot": ["retry"], "status": { "busy": "error" } },
+    { "when": { "header": "zero" }, "labels": { "busy": "429 · retry-after: 0" } },
+    { "when": { "header": "none" }, "labels": { "busy": "429 · no retry-after" } },
+    { "when": { "header": "sixty", "opt": "on" }, "labels": { "again": "retry · waits 30 s (cap)" } },
+    { "when": { "header": "sixty", "opt": "off", "before": true }, "labels": { "again": "retry · waits 30 s (cap)" } },
+    { "when": { "header": "zero", "opt": "on" }, "labels": { "again": "retry · no wait" } },
+    { "when": { "header": "zero", "opt": "off", "before": true }, "labels": { "again": "retry · no wait" } }
+  ]
+}

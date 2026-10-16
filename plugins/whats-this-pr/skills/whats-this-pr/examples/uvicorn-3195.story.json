@@ -1,0 +1,121 @@
+{
+ "repo": "Kludex/uvicorn",
+ "number": 3195,
+ "url": "https://github.com/Kludex/uvicorn/pull/3195",
+ "title": "Use `raw_path` for the request target in access logs",
+ "author": "feiiiiii5",
+ "agent": "Unknown",
+ "spotlights": [
+  {
+   "id": "chars",
+   "label": "Only double quotes are escaped now",
+   "why": "quote() used to percent-encode every character outside its safe set. h11 accepts any printable ASCII in the target, so GET /a<b> used to log /a%3Cb%3E and now logs /a<b>; the same goes for \\ { } | ^ and backticks. Whitespace and control bytes still cannot reach the log, because the parsers reject them.",
+   "step": 1
+  },
+  {
+   "id": "query",
+   "label": "Quotes in the query string now become %22",
+   "why": "Before, the query string was appended verbatim, so ?a\"b put a bare quote inside the quoted request field. The final replace() now covers the query too. A fix, but a logged query changes for anyone grepping for it.",
+   "step": 1
+  },
+  {
+   "id": "rewrite",
+   "label": "In-place path rewrites no longer reach the log",
+   "why": "The log line is written at http.response.start from the same scope dict the app received. An app or middleware that rewrote scope[\"path\"] in place used to change the logged path; raw_path is rarely touched, so the log now shows the wire target whatever the app did.",
+   "step": 1
+  },
+  {
+   "id": "keyerror",
+   "label": "A scope without raw_path now raises KeyError",
+   "why": "The PR reads scope[\"raw_path\"] with no fallback, on purpose. Every uvicorn protocol sets it, but any outside code calling get_path_with_query_string with a hand-built scope that lacks it will now fail instead of logging.",
+   "step": 1
+  },
+  {
+   "id": "ws",
+   "label": "WebSocket log lines have no new test",
+   "why": "The three WebSocket implementations call the same function for their accept and reject log lines, and they all set raw_path, but the new tests only drive HTTP. The quote test also skips zttp, which rejects quotes in the target.",
+   "step": 2
+  }
+ ],
+ "steps": [
+  {
+   "title": "Log the request target as the client sent it",
+   "why": "get_path_with_query_string() stops re-encoding the decoded scope[\"path\"] with urllib.parse.quote() and decodes scope[\"raw_path\"] as latin1 instead. The query string is appended as before, then every double quote in the result becomes %22.",
+   "consequence": "Every HTTP and WebSocket access line names the target the client sent: /one%2Ftwo stays /one%2Ftwo and /%41 stays /%41, with the --root-path prefix still in front.",
+   "spotlights": [
+    "chars",
+    "query",
+    "rewrite",
+    "keyerror"
+   ],
+   "hunks": [
+    {
+     "file": "uvicorn/protocols/utils.py",
+     "notes": [
+      [
+       "path_with_query_string = scope[\"raw_path\"].decode(\"latin1\")",
+       "Undecoded bytes, root_path prefix included",
+       "scope[\"raw_path\"]"
+      ],
+      [
+       "path_with_query_string = scope[\"raw_path\"].decode(\"latin1\")",
+       "Lossless: parsers only admit ASCII",
+       ".decode(\"latin1\")"
+      ],
+      [
+       "scope[\"query_string\"].decode(\"ascii\")",
+       "Unchanged: raw_path carries no query",
+       "scope[\"query_string\"]"
+      ],
+      [
+       "return path_with_query_string.replace('\"', \"%22\")",
+       "Now covers the query string too",
+       ".replace('\"', \"%22\")"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "title": "Prove encoded targets and quotes log unchanged",
+   "why": "test_request_logging gains /one%2Ftwo and /%41, and still asserts the logged target equals the sent one. A new test sends /foo\"bar?a\"b and expects both quotes logged as %22.",
+   "consequence": "Every HTTP protocol class is pinned to log the sent target; zttp is skipped for the quote case, and WebSocket logging is not exercised.",
+   "spotlights": [
+    "ws"
+   ],
+   "hunks": [
+    {
+     "file": "tests/protocols/test_http.py",
+     "notes": [
+      [
+       "pytest.param(\"/one%2Ftwo\", id=\"percent-encoded-slash\"),",
+       "Used to log /one/two",
+       "\"/one%2Ftwo\""
+      ],
+      [
+       "pytest.param(\"/%41\", id=\"percent-encoded-letter\"),",
+       "Used to log /A",
+       "\"/%41\""
+      ],
+      [
+       "assert f'\"GET {path} HTTP/1.1\" 200' in caplog.records[0].message",
+       "Logged target must equal the sent one",
+       "{path}"
+      ],
+      [
+       "pytest.skip(\"zttp rejects quotes in the request target\")",
+       "zttp never sees this request",
+       "pytest.skip"
+      ],
+      [
+       "assert '\"GET /foo%22bar?a%22b HTTP/1.1\" 200'",
+       "Query quote escaped too",
+       "?a%22b"
+      ]
+     ]
+    }
+   ]
+  }
+ ],
+ "mechanical": []
+}

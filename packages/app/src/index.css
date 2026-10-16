@@ -1,0 +1,273 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "@fontsource-variable/inter";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+    --font-heading: var(--font-sans);
+    --font-sans: 'Inter Variable', sans-serif;
+    --color-sidebar-ring: var(--sidebar-ring);
+    --color-sidebar-border: var(--sidebar-border);
+    --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+    --color-sidebar-accent: var(--sidebar-accent);
+    --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+    --color-sidebar-primary: var(--sidebar-primary);
+    --color-sidebar-foreground: var(--sidebar-foreground);
+    --color-sidebar: var(--sidebar);
+    --color-chart-5: var(--chart-5);
+    --color-chart-4: var(--chart-4);
+    --color-chart-3: var(--chart-3);
+    --color-chart-2: var(--chart-2);
+    --color-chart-1: var(--chart-1);
+    --color-ring: var(--ring);
+    --color-input: var(--input);
+    --color-border: var(--border);
+    --color-destructive: var(--destructive);
+    --color-accent-foreground: var(--accent-foreground);
+    --color-accent: var(--accent);
+    --color-muted-foreground: var(--muted-foreground);
+    --color-muted: var(--muted);
+    --color-secondary-foreground: var(--secondary-foreground);
+    --color-secondary: var(--secondary);
+    --color-primary-foreground: var(--primary-foreground);
+    --color-primary: var(--primary);
+    --color-popover-foreground: var(--popover-foreground);
+    --color-popover: var(--popover);
+    --color-card-foreground: var(--card-foreground);
+    --color-card: var(--card);
+    --color-foreground: var(--foreground);
+    --color-background: var(--background);
+    --radius-sm: calc(var(--radius) * 0.6);
+    --radius-md: calc(var(--radius) * 0.8);
+    --radius-lg: var(--radius);
+    --radius-xl: calc(var(--radius) * 1.4);
+    --radius-2xl: calc(var(--radius) * 1.8);
+    --radius-3xl: calc(var(--radius) * 2.2);
+    --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+/* Code notes are set in a hand. */
+:root {
+    --font-note: 'Caveat Variable', Caveat, cursive;
+    --background: oklch(1 0 0);
+    --foreground: oklch(0.145 0 0);
+    --card: oklch(1 0 0);
+    --card-foreground: oklch(0.145 0 0);
+    --popover: oklch(1 0 0);
+    --popover-foreground: oklch(0.145 0 0);
+    --primary: oklch(0.205 0 0);
+    --primary-foreground: oklch(0.985 0 0);
+    --secondary: oklch(0.97 0 0);
+    --secondary-foreground: oklch(0.205 0 0);
+    --muted: oklch(0.97 0 0);
+    --muted-foreground: oklch(0.556 0 0);
+    --accent: oklch(0.97 0 0);
+    --accent-foreground: oklch(0.205 0 0);
+    --destructive: oklch(0.577 0.245 27.325);
+    --border: oklch(0.922 0 0);
+    --input: oklch(0.922 0 0);
+    --ring: oklch(0.708 0 0);
+    --chart-1: oklch(0.87 0 0);
+    --chart-2: oklch(0.556 0 0);
+    --chart-3: oklch(0.439 0 0);
+    --chart-4: oklch(0.371 0 0);
+    --chart-5: oklch(0.269 0 0);
+    --radius: 0.625rem;
+    --sidebar: oklch(0.985 0 0);
+    --sidebar-foreground: oklch(0.145 0 0);
+    --sidebar-primary: oklch(0.205 0 0);
+    --sidebar-primary-foreground: oklch(0.985 0 0);
+    --sidebar-accent: oklch(0.97 0 0);
+    --sidebar-accent-foreground: oklch(0.205 0 0);
+    --sidebar-border: oklch(0.922 0 0);
+    --sidebar-ring: oklch(0.708 0 0);
+}
+
+.dark {
+    --background: oklch(0.145 0 0);
+    --foreground: oklch(0.985 0 0);
+    --card: oklch(0.205 0 0);
+    --card-foreground: oklch(0.985 0 0);
+    --popover: oklch(0.205 0 0);
+    --popover-foreground: oklch(0.985 0 0);
+    --primary: oklch(0.922 0 0);
+    --primary-foreground: oklch(0.205 0 0);
+    --secondary: oklch(0.269 0 0);
+    --secondary-foreground: oklch(0.985 0 0);
+    --muted: oklch(0.269 0 0);
+    --muted-foreground: oklch(0.708 0 0);
+    --accent: oklch(0.269 0 0);
+    --accent-foreground: oklch(0.985 0 0);
+    --destructive: oklch(0.704 0.191 22.216);
+    --border: oklch(1 0 0 / 10%);
+    --input: oklch(1 0 0 / 15%);
+    --ring: oklch(0.556 0 0);
+    --chart-1: oklch(0.87 0 0);
+    --chart-2: oklch(0.556 0 0);
+    --chart-3: oklch(0.439 0 0);
+    --chart-4: oklch(0.371 0 0);
+    --chart-5: oklch(0.269 0 0);
+    --sidebar: oklch(0.205 0 0);
+    --sidebar-foreground: oklch(0.985 0 0);
+    --sidebar-primary: oklch(0.488 0.243 264.376);
+    --sidebar-primary-foreground: oklch(0.985 0 0);
+    --sidebar-accent: oklch(0.269 0 0);
+    --sidebar-accent-foreground: oklch(0.985 0 0);
+    --sidebar-border: oklch(1 0 0 / 10%);
+    --sidebar-ring: oklch(0.556 0 0);
+}
+
+/* Schematic diagrams (scripts/diagrams.mjs, theme 'inherit') take their colours from these. */
+:root {
+    --sx-paper: var(--background);
+    --sx-ink: oklch(0.2 0 0);
+    --sx-dim: oklch(0.6 0 0);
+    --sx-faint: oklch(0.82 0 0);
+    --sx-ok: oklch(0.55 0.14 150);
+    --sx-err: oklch(0.56 0.2 27);
+    --sx-font: 'Geist Mono Variable', ui-monospace, monospace;
+}
+.dark {
+    --sx-ink: oklch(0.92 0 0);
+    --sx-dim: oklch(0.62 0 0);
+    --sx-faint: oklch(0.4 0 0);
+    --sx-ok: oklch(0.76 0.15 150);
+    --sx-err: oklch(0.7 0.18 27);
+}
+
+/* App tokens, light then dark. CSS variables cross into the diff's shadow DOM, so its file header uses them too. */
+:root {
+    --panel: oklch(0.985 0 0);           /* the diff column behind the code cards */
+    --file-header: #f4f4f4;
+    --file-header-hover: #efefef;
+    --file-header-rule: #e6e6e6;
+    --chev: #8a8a8a;
+    --ink: #1f1f1f;                      /* handwriting and arrows */
+    --highlight: rgb(255 216 77 / 0.7);
+    --highlight-blend: multiply;         /* the code reads through the marker */
+    --stat-add: oklch(0.52 0.14 150);
+    --stat-del: oklch(0.52 0.19 27);
+}
+.dark {
+    --panel: oklch(0.17 0 0);
+    --file-header: oklch(0.24 0 0);
+    --file-header-hover: oklch(0.27 0 0);
+    --file-header-rule: oklch(0.3 0 0);
+    --chev: oklch(0.6 0 0);
+    --ink: oklch(0.9 0 0);
+    --highlight: rgb(255 255 255 / 0.2);  /* neutral: dark code themes draw many tokens yellow/orange, a yellow tint fought them */
+    --highlight-blend: normal;
+    --stat-add: oklch(0.75 0.15 150);
+    --stat-del: oklch(0.72 0.17 27);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+    }
+  body {
+    @apply bg-background text-foreground antialiased tracking-[-0.006em];
+    }
+  button:not(:disabled), [role="button"]:not(:disabled) {
+    cursor: pointer;
+    }
+  html {
+    @apply font-sans;
+    }
+}
+@import "@fontsource-variable/geist-mono";
+/* The hand for code notes, bundled (no font host is contacted). */
+@import "@fontsource-variable/caveat";
+
+@theme inline {
+    --font-mono: 'Geist Mono Variable', ui-monospace, Menlo, monospace;
+}
+
+/* ---------- S4 · scrubbed fade ----------
+   Scrubbed by scroll (linear, reversible, no duration): as the next step pushes in, the outgoing guide dims and
+   lifts, and the incoming one sharpens. The diff column never animates. */
+.step { view-timeline: --step block; }
+.step:last-child .diffs { padding-bottom: 220px; }
+.diffs { --diffs-font-family: var(--font-mono); --diffs-header-font-family: var(--font-sans); }
+
+@keyframes dim-out { to { opacity: 0.18; transform: translateY(-14px); filter: blur(1.5px); } }
+@keyframes sharpen-in { from { opacity: 0.18; transform: translateY(14px); filter: blur(1.5px); } }
+@supports (animation-timeline: view()) {
+    .guide {
+        animation: sharpen-in linear both, dim-out linear forwards;
+        animation-timeline: --step, --step;
+        animation-range: entry 40% entry 100%, exit 35% exit 90%;
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    .guide { animation: none; }
+}
+
+/* ---------- sketch notes ----------
+   Entrance (once per file, as it scrolls in): the arrow is drawn from the note to the code like a pen stroke, the
+   arrowhead last, then the words settle in; notes follow each other top to bottom (--d). Strokes draw with an
+   ease-in-out (a hand speeds up and slows down); the words ease out.
+   Hover: the hovered note's line stays sharp, the rest of the file and the other notes blur and fade (quick, ease;
+   the code side lives in file-diff.tsx's HEADER_CSS because it is inside the diff's shadow DOM). */
+.sketch {
+    --ease-pen: cubic-bezier(0.645, 0.045, 0.355, 1);
+    --ease-out-expo: cubic-bezier(0.19, 1, 0.22, 1);
+}
+.sketch .arrow path { stroke-dasharray: 100 110; stroke-dashoffset: 100; }
+.sketch .note > span { display: block; opacity: 0; transform: translateX(6px); filter: blur(2px); }
+.sketch.in .arrow .shaft { stroke-dashoffset: 0; transition: stroke-dashoffset 340ms var(--ease-pen) var(--d); }
+.sketch.in .arrow .head { stroke-dashoffset: 0; transition: stroke-dashoffset 120ms ease-out calc(var(--d) + 320ms); }
+.sketch.in .note > span {
+    opacity: 1; transform: none; filter: none;
+    transition: opacity 320ms var(--ease-out-expo), transform 320ms var(--ease-out-expo), filter 320ms var(--ease-out-expo);
+    transition-delay: calc(var(--d) + 180ms);
+}
+/* Focus: dimming sits on the note and the arrow group, so it never fights the entrance on the inner parts. */
+.sketch .note, .sketch .arrow { transition: opacity 180ms ease, filter 180ms ease; }
+.sketch.focusing .note:not(.active), .sketch.focusing .arrow:not(.active) { opacity: 0.3; filter: blur(1.5px); }
+
+@media (prefers-reduced-motion: reduce) {
+    .sketch .arrow path, .sketch.in .arrow path { stroke-dashoffset: 0; transition: none; }
+    .sketch .note > span { transform: none; filter: none; }
+    .sketch.in .note > span { transition: opacity 200ms ease; transition-delay: 0ms; }
+    .sketch .arrow { opacity: 0; }
+    .sketch.in .arrow { opacity: 1; transition: opacity 200ms ease; }
+    .sketch.focusing .note:not(.active), .sketch.focusing .arrow:not(.active) { filter: none; }
+}
+
+/* ---------- text highlight on hover (text-highlight.tsx) ----------
+   Shown on every hover, so quick: the highlighter wipes in from the left in 200ms. */
+.text-highlight { transform-origin: left center; animation: highlight-wipe 200ms cubic-bezier(0.19, 1, 0.22, 1) both; }
+@keyframes highlight-wipe { from { transform: scaleX(0); } }
+@media (prefers-reduced-motion: reduce) {
+    .text-highlight { animation: none; }
+}
+
+/* ---------- inline note on list hover (inline-note.tsx) ----------
+   Shown on every hover, so quick: the arrow is drawn in ~220ms, the words settle in just after. */
+.inline-note path { stroke-dasharray: 100 110; stroke-dashoffset: 100; animation: inline-draw 220ms cubic-bezier(0.645, 0.045, 0.355, 1) forwards; }
+.inline-note .head { animation-duration: 80ms; animation-delay: 200ms; }
+.inline-note .words { animation: inline-words 200ms cubic-bezier(0.19, 1, 0.22, 1) 120ms both; }
+@keyframes inline-draw { to { stroke-dashoffset: 0; } }
+@keyframes inline-words { from { opacity: 0; transform: translateY(3px); filter: blur(1.5px); } }
+@media (prefers-reduced-motion: reduce) {
+    .inline-note path { animation: none; stroke-dashoffset: 0; }
+    .inline-note .words { animation: inline-fade 150ms ease both; }
+}
+@keyframes inline-fade { from { opacity: 0; } }
+
+/* The "Viewed" checkbox in a file header (file-diff.tsx), slotted in after the +/− counts. */
+.viewed-box {
+    display: inline-flex; align-items: center; gap: 6px; margin-left: 12px; padding: 2px 4px;
+    font: 12.5px var(--font-sans); color: var(--muted-foreground); cursor: pointer; border-radius: 4px;
+}
+.viewed-box:hover { color: var(--foreground); }
+.viewed-box .box {
+    display: grid; place-items: center; width: 14px; height: 14px; border-radius: 3.5px;
+    border: 1px solid color-mix(in oklab, var(--foreground) 35%, transparent); transition: background-color 120ms ease, border-color 120ms ease;
+}
+.viewed-box[aria-checked="true"] { color: var(--foreground); }
+.viewed-box[aria-checked="true"] .box { background: var(--foreground); border-color: var(--foreground); }
+.viewed-box svg { width: 10px; height: 10px; fill: none; stroke: var(--background); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }

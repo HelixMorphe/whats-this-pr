@@ -1,0 +1,257 @@
+{
+ "repo": "Kludex/starlette",
+ "number": 3435,
+ "title": "Add HTTP 103 Early Hints support",
+ "author": "Kludex",
+ "agent": "Unknown",
+ "files": 10,
+ "add": 240,
+ "del": 9,
+ "ticket": {
+  "key": "No ticket",
+  "title": "Add HTTP 103 Early Hints support"
+ },
+ "spotlights": [
+  {
+   "id": "noop",
+   "label": "No signal when hints are ignored",
+   "why": "send_early_hints returns None whether it sent a hint or skipped it. Hypercorn advertises the extension only on HTTP/2 and HTTP/3, and TestClient never advertises it, so a TestClient test always takes the silent path.",
+   "step": 1
+  },
+  {
+   "id": "encode",
+   "label": "Link values are sent unvalidated",
+   "why": "Each value is only encoded as latin-1: a non-latin-1 URL raises UnicodeEncodeError, and CR/LF or a malformed Link value is passed to the server unchecked. Header validation is left to the ASGI server.",
+   "step": 1
+  },
+  {
+   "id": "push",
+   "label": "HTTPEndpoint push promises now send",
+   "why": "Before, the Request in HTTPEndpoint and in a BaseHTTPMiddleware dispatch had no send channel, so send_push_promise raised \"Send channel has not been made available\". Now it sends, or no-ops. Code that relied on that error behaves differently.",
+   "step": 2
+  },
+  {
+   "id": "late",
+   "label": "A hint after response start crashes the middleware",
+   "why": "Nothing checks that http.response.start has not gone out yet. Behind BaseHTTPMiddleware, a hint sent from a streaming body lands in body_stream and fails its \"Unexpected message\" assertion. Hypercorn sends a 103 only before the response starts.",
+   "step": 3
+  }
+ ],
+ "steps": [
+  {
+   "n": 1,
+   "title": "Add Request.send_early_hints",
+   "why": "A new method on Request takes one required Link value plus any more, positional-only. If the scope advertises http.response.early_hint, it encodes them as latin-1 and sends one http.response.early_hint event through the Request's send channel; otherwise it does nothing.",
+   "consequence": "Plain function routes can send a 103 right away, since request_response already builds Request with send. HTTPEndpoint and BaseHTTPMiddleware can't yet.",
+   "spotlights": [
+    "noop",
+    "encode"
+   ],
+   "hunks": [
+    {
+     "file": "starlette/requests.py",
+     "isNew": false,
+     "patch": "diff --git a/starlette/requests.py b/starlette/requests.py\nindex d4f3f4be6..86833e06e 100644\n--- a/starlette/requests.py\n+++ b/starlette/requests.py\n@@ -346,3 +346,8 @@ async def send_push_promise(self, path: str) -> None:\n                 for value in self.headers.getlist(name):\n                     raw_headers.append((name.encode(\"latin-1\"), value.encode(\"latin-1\")))\n             await self._send({\"type\": \"http.response.push\", \"path\": path, \"headers\": raw_headers})\n+\n+    async def send_early_hints(self, link: str, /, *additional_links: str) -> None:\n+        if \"http.response.early_hint\" in self.scope.get(\"extensions\", {}):\n+            raw_links = [value.encode(\"latin-1\") for value in (link, *additional_links)]\n+            await self._send({\"type\": \"http.response.early_hint\", \"links\": raw_links})\n",
+     "notes": [
+      {
+       "line": 350,
+       "at": "link: str, /",
+       "text": "First link required, positional-only"
+      },
+      {
+       "line": 351,
+       "at": "\"http.response.early_hint\"",
+       "text": "Silent no-op without the extension"
+      },
+      {
+       "line": 347,
+       "at": "encode(\"latin-1\")",
+       "text": "Only encoding: no Link syntax check"
+      },
+      {
+       "line": 353,
+       "at": "\"links\": raw_links",
+       "text": "One event for all links"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "n": 2,
+   "title": "Give HTTPEndpoint and middleware requests a send channel",
+   "why": "HTTPEndpoint.dispatch now builds its Request with send=self.send. BaseHTTPMiddleware's _CachedRequest takes send as a required third argument, so the request a dispatch function sees can send too.",
+   "consequence": "send_early_hints (and send_push_promise) work from an HTTPEndpoint method and from a dispatch function. A hint from dispatch goes straight to the outer send.",
+   "spotlights": [
+    "push"
+   ],
+   "hunks": [
+    {
+     "file": "starlette/endpoints.py",
+     "isNew": false,
+     "patch": "diff --git a/starlette/endpoints.py b/starlette/endpoints.py\nindex 9b2032c23..cc3ede3af 100644\n--- a/starlette/endpoints.py\n+++ b/starlette/endpoints.py\n@@ -30,7 +30,7 @@ def __await__(self) -> Generator[Any, None, None]:\n         return self.dispatch().__await__()\n \n     async def dispatch(self) -> None:\n-        request = Request(self.scope, receive=self.receive)\n+        request = Request(self.scope, receive=self.receive, send=self.send)\n         handler_name = \"get\" if request.method == \"HEAD\" and not hasattr(self, \"head\") else request.method.lower()\n \n         handler: Callable[[Request], Any]\n",
+     "notes": [
+      {
+       "line": 33,
+       "at": "send=self.send",
+       "text": "Was empty_send: sending raised RuntimeError"
+      }
+     ]
+    },
+    {
+     "file": "starlette/middleware/base.py",
+     "isNew": false,
+     "patch": "diff --git a/starlette/middleware/base.py b/starlette/middleware/base.py\nindex a7ecb80cf..d12019469 100644\n--- a/starlette/middleware/base.py\n+++ b/starlette/middleware/base.py\n@@ -25,8 +25,8 @@ class _CachedRequest(Request):\n     empty body so that downstream things don't hang forever.\n     \"\"\"\n \n-    def __init__(self, scope: Scope, receive: Receive):\n-        super().__init__(scope, receive)\n+    def __init__(self, scope: Scope, receive: Receive, send: Send):\n+        super().__init__(scope, receive, send)\n         self._wrapped_rcv_disconnected = False\n         self._wrapped_rcv_consumed = False\n         self._wrapped_rc_stream = self.stream()\n@@ -103,7 +103,7 @@ async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:\n             await self.app(scope, receive, send)\n             return\n \n-        request = _CachedRequest(scope, receive)\n+        request = _CachedRequest(scope, receive, send)\n         wrapped_receive = request.wrapped_receive\n         response_sent = anyio.Event()\n         app_exc: Exception | None = None\n",
+     "notes": [
+      {
+       "line": 28,
+       "at": "send: Send",
+       "text": "Required now: private, but signature breaks"
+      },
+      {
+       "line": 106,
+       "at": "send)",
+       "text": "The outer send, not the stream"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "n": 3,
+   "title": "Forward hints through BaseHTTPMiddleware and GZip",
+   "why": "call_next used to read one optional debug message and then assert http.response.start. It now loops: debug messages set info, early_hint messages are sent straight to the outer send, and the first other message ends the loop. GZipMiddleware passes early_hint through untouched, like trailers.",
+   "consequence": "A downstream hint reaches the client before the final response under either middleware. Before, a raw early_hint event failed the start assertion in BaseHTTPMiddleware and GZip dropped it without a word.",
+   "spotlights": [
+    "late"
+   ],
+   "hunks": [
+    {
+     "file": "starlette/middleware/base.py",
+     "isNew": false,
+     "patch": "diff --git a/starlette/middleware/base.py b/starlette/middleware/base.py\nindex a7ecb80cf..d12019469 100644\n--- a/starlette/middleware/base.py\n+++ b/starlette/middleware/base.py\n@@ -153,10 +153,16 @@ async def coro() -> None:\n             task_group.start_soon(coro)\n \n             try:\n-                message = await recv_stream.receive()\n-                info = message.get(\"info\", None)\n-                if message[\"type\"] == \"http.response.debug\" and info is not None:\n+                info = None\n+                while True:\n                     message = await recv_stream.receive()\n+                    if message[\"type\"] == \"http.response.debug\":\n+                        info = message[\"info\"]\n+                        continue\n+                    elif message[\"type\"] == \"http.response.early_hint\":\n+                        await send(message)\n+                        continue\n+                    break\n             except anyio.EndOfStream:\n                 if app_exc is not None:\n                     nonlocal exception_already_raised\n",
+     "notes": [
+      {
+       "line": 157,
+       "at": "while True",
+       "text": "Any number of events before start"
+      },
+      {
+       "line": 160,
+       "at": "message[\"info\"]",
+       "text": "Strict now: no info is KeyError"
+      },
+      {
+       "line": 163,
+       "at": "send(message)",
+       "text": "Forwarded now, before dispatch returns"
+      },
+      {
+       "line": 165,
+       "at": "break",
+       "text": "Next message must be start"
+      }
+     ]
+    },
+    {
+     "file": "starlette/middleware/gzip.py",
+     "isNew": false,
+     "patch": "diff --git a/starlette/middleware/gzip.py b/starlette/middleware/gzip.py\nindex b69e4d193..0f5aafc73 100644\n--- a/starlette/middleware/gzip.py\n+++ b/starlette/middleware/gzip.py\n@@ -169,7 +169,7 @@ async def send_with_compression(self, message: Message) -> None:\n             message[\"body\"] = await self.apply_compression(body, more_body=more_body)\n \n             await self.send(message)\n-        elif message_type == \"http.response.trailers\":\n+        elif message_type in (\"http.response.early_hint\", \"http.response.trailers\"):\n             await self.send(message)\n         elif message_type == \"http.response.pathsend\":  # pragma: no branch\n             # Don't apply GZip to pathsend responses\n",
+     "notes": [
+      {
+       "line": 172,
+       "at": "\"http.response.early_hint\"",
+       "text": "Used to fall through: dropped"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "n": 4,
+   "title": "Prove hints at each layer",
+   "why": "Unit tests cover the event shape with two links, the silent no-op without the extension, and the RuntimeError without a send channel. Integration tests check that HTTPEndpoint, BaseHTTPMiddleware (hints from dispatch and endpoint, in order) and GZipMiddleware (gzip and identity) put the hint before http.response.start.",
+   "consequence": "Ordering is pinned at every layer the PR touches. No test sends a hint after the response has started.",
+   "spotlights": [],
+   "hunks": [
+    {
+     "file": "tests/test_requests.py",
+     "isNew": false,
+     "patch": "diff --git a/tests/test_requests.py b/tests/test_requests.py\nindex eb02a0ffd..e6724950d 100644\n--- a/tests/test_requests.py\n+++ b/tests/test_requests.py\n@@ -3,6 +3,7 @@\n import sys\n from collections.abc import Iterator\n from typing import Any\n+from unittest.mock import AsyncMock\n \n import anyio\n import pytest\n@@ -564,6 +565,47 @@ async def app(scope: Scope, receive: Receive, send: Send) -> None:\n     assert response.json() == {\"json\": \"Send channel not available\"}\n \n \n+@pytest.mark.anyio\n+async def test_request_send_early_hints() -> None:\n+    messages: list[Message] = []\n+\n+    async def send(message: Message) -> None:\n+        messages.append(message)\n+\n+    scope: Scope = {\"type\": \"http\", \"extensions\": {\"http.response.early_hint\": {}}}\n+    request = Request(scope, send=send)\n+    await request.send_early_hints(\n+        \"</style.css>; rel=preload; as=style\",\n+        \"</app.js>; rel=modulepreload\",\n+    )\n+\n+    assert messages == [\n+        {\n+            \"type\": \"http.response.early_hint\",\n+            \"links\": [\n+                b\"</style.css>; rel=preload; as=style\",\n+                b\"</app.js>; rel=modulepreload\",\n+            ],\n+        }\n+    ]\n+\n+\n+@pytest.mark.anyio\n+async def test_request_send_early_hints_without_extension() -> None:\n+    send = AsyncMock()\n+    request = Request({\"type\": \"http\"}, send=send)\n+    await request.send_early_hints(\"</style.css>; rel=preload; as=style\")\n+    send.assert_not_awaited()\n+\n+\n+@pytest.mark.anyio\n+async def test_request_send_early_hints_without_send_channel() -> None:\n+    request = Request({\"type\": \"http\", \"extensions\": {\"http.response.early_hint\": {}}})\n+\n+    with pytest.raises(RuntimeError, match=\"Send channel has not been made available\"):\n+        await request.send_early_hints(\"</style.css>; rel=preload; as=style\")\n+\n+\n @pytest.mark.parametrize(\n     \"messages\",\n     [\n",
+     "notes": [
+      {
+       "line": 598,
+       "at": "assert_not_awaited",
+       "text": "No extension: nothing sent"
+      },
+      {
+       "line": 605,
+       "at": "pytest.raises(RuntimeError",
+       "text": "Extension but no send: still raises"
+      }
+     ]
+    },
+    {
+     "file": "tests/test_endpoints.py",
+     "isNew": false,
+     "patch": "diff --git a/tests/test_endpoints.py b/tests/test_endpoints.py\nindex 803fc4832..914c4d612 100644\n--- a/tests/test_endpoints.py\n+++ b/tests/test_endpoints.py\n@@ -8,7 +8,7 @@\n from starlette.responses import PlainTextResponse\n from starlette.routing import Route, Router\n from starlette.testclient import TestClient\n-from starlette.types import Message\n+from starlette.types import Message, Scope\n from starlette.websockets import WebSocket\n from tests.types import TestClientFactory\n \n@@ -58,6 +58,37 @@ def test_http_endpoint_route_query_method(client: TestClient) -> None:\n     assert response.text == \"Hello, QUERY!\"\n \n \n+@pytest.mark.anyio\n+async def test_http_endpoint_supports_early_hints() -> None:\n+    class Endpoint(HTTPEndpoint):\n+        async def get(self, request: Request) -> PlainTextResponse:\n+            await request.send_early_hints(\"</style.css>; rel=preload; as=style\")\n+            return PlainTextResponse(\"Hello, world!\")\n+\n+    scope: Scope = {\n+        \"type\": \"http\",\n+        \"method\": \"GET\",\n+        \"extensions\": {\"http.response.early_hint\": {}},\n+    }\n+    messages: list[Message] = []\n+\n+    async def receive() -> Message:\n+        raise NotImplementedError\n+\n+    async def send(message: Message) -> None:\n+        messages.append(message)\n+\n+    await Endpoint(scope, receive, send)\n+\n+    assert messages[0] == {\n+        \"type\": \"http.response.early_hint\",\n+        \"links\": [b\"</style.css>; rel=preload; as=style\"],\n+    }\n+    assert messages[1][\"type\"] == \"http.response.start\"\n+    assert messages[2][\"type\"] == \"http.response.body\"\n+    assert messages[2][\"body\"] == b\"Hello, world!\"\n+\n+\n def test_http_endpoint_does_not_dispatch_non_verb_method(test_client_factory: TestClientFactory) -> None:\n     class Endpoint(HTTPEndpoint):\n         async def get(self, request: Request) -> PlainTextResponse:\n",
+     "notes": [
+      {
+       "line": 87,
+       "at": "messages[1]",
+       "text": "Hint lands before start"
+      }
+     ]
+    },
+    {
+     "file": "tests/middleware/test_base.py",
+     "isNew": false,
+     "patch": "diff --git a/tests/middleware/test_base.py b/tests/middleware/test_base.py\nindex 3587938df..ab28e9e46 100644\n--- a/tests/middleware/test_base.py\n+++ b/tests/middleware/test_base.py\n@@ -1211,6 +1211,46 @@ async def send(message: Message) -> None:\n     ]\n \n \n+@pytest.mark.anyio\n+async def test_early_hints_events() -> None:\n+    events: list[Message] = []\n+\n+    async def app(scope: Scope, receive: Receive, send: Send) -> None:\n+        request = Request(scope, receive, send)\n+        await request.send_early_hints(\"</endpoint.css>; rel=preload; as=style\")\n+        await PlainTextResponse(\"hello\")(scope, receive, send)\n+\n+    async def send_early_hints(request: Request, call_next: RequestResponseEndpoint) -> Response:\n+        await request.send_early_hints(\"</middleware.css>; rel=preload; as=style\")\n+        return await call_next(request)\n+\n+    middleware = BaseHTTPMiddleware(app, dispatch=send_early_hints)\n+    scope: Scope = {\"type\": \"http\", \"extensions\": {\"http.response.early_hint\": {}}}\n+\n+    async def receive() -> Message:\n+        raise NotImplementedError\n+\n+    async def send(message: Message) -> None:\n+        events.append(message)\n+\n+    await middleware(scope, receive, send)\n+\n+    assert events[:2] == [\n+        {\n+            \"type\": \"http.response.early_hint\",\n+            \"links\": [b\"</middleware.css>; rel=preload; as=style\"],\n+        },\n+        {\n+            \"type\": \"http.response.early_hint\",\n+            \"links\": [b\"</endpoint.css>; rel=preload; as=style\"],\n+        },\n+    ]\n+    assert events[2][\"type\"] == \"http.response.start\"\n+    assert events[-1][\"type\"] == \"http.response.body\"\n+    assert events[-1].get(\"more_body\", False) is False\n+    assert b\"\".join(event.get(\"body\", b\"\") for event in events[3:]) == b\"hello\"\n+\n+\n @pytest.mark.anyio\n async def test_asgi_pathsend_events(tmpdir: Path) -> None:\n     path = tmpdir / \"example.txt\"\n",
+     "notes": [
+      {
+       "line": 1241,
+       "at": "middleware.css",
+       "text": "Dispatch hint goes first"
+      },
+      {
+       "line": 1248,
+       "at": "events[2]",
+       "text": "Both hints precede start"
+      }
+     ]
+    },
+    {
+     "file": "tests/middleware/test_gzip.py",
+     "isNew": false,
+     "patch": "diff --git a/tests/middleware/test_gzip.py b/tests/middleware/test_gzip.py\nindex beaac6493..f68b95e28 100644\n--- a/tests/middleware/test_gzip.py\n+++ b/tests/middleware/test_gzip.py\n@@ -216,6 +216,40 @@ async def generator(bytes: bytes, count: int) -> ContentStream:\n     assert \"Content-Length\" not in response.headers\n \n \n+@pytest.mark.anyio\n+@pytest.mark.parametrize(\"encoding\", [\"gzip\", \"identity\"])\n+async def test_gzip_passes_through_early_hints(encoding: str) -> None:\n+    async def app(scope: Scope, receive: Receive, send: Send) -> None:\n+        request = Request(scope, receive, send)\n+        await request.send_early_hints(\"</style.css>; rel=preload; as=style\")\n+        await PlainTextResponse(\"hello\")(scope, receive, send)\n+\n+    events: list[Message] = []\n+\n+    async def send(message: Message) -> None:\n+        events.append(message)\n+\n+    async def receive() -> Message:\n+        raise NotImplementedError\n+\n+    scope: Scope = {\n+        \"type\": \"http\",\n+        \"headers\": [(b\"accept-encoding\", encoding.encode())],\n+        \"extensions\": {\"http.response.early_hint\": {}},\n+    }\n+    await GZipMiddleware(app, minimum_size=0)(scope, receive, send)\n+\n+    assert events[0] == {\n+        \"type\": \"http.response.early_hint\",\n+        \"links\": [b\"</style.css>; rel=preload; as=style\"],\n+    }\n+    assert events[1][\"type\"] == \"http.response.start\"\n+    body = events[2][\"body\"]\n+    if encoding == \"gzip\":\n+        body = zlib.decompress(body, 16 + zlib.MAX_WBITS)\n+    assert body == b\"hello\"\n+\n+\n @pytest.mark.anyio\n async def test_gzip_ignored_for_pathsend_responses(tmpdir: Path) -> None:\n     path = tmpdir / \"example.txt\"\n",
+     "notes": [
+      {
+       "line": 220,
+       "at": "\"identity\"",
+       "text": "Both responders pass it through"
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "mechanical": [
+  {
+   "kind": "Docs",
+   "why": "A new usage page with a runnable example, and its nav entry. Claims Hypercorn support over HTTP/2 and HTTP/3, which matches Hypercorn's source.",
+   "files": [
+    {
+     "file": "docs/early-hints.md",
+     "add": 72,
+     "del": 0
+    },
+    {
+     "file": "mkdocs.yml",
+     "add": 1,
+     "del": 0
+    }
+   ]
+  }
+ ],
+ "url": "https://github.com/Kludex/starlette/pull/3435"
+}

@@ -1,0 +1,309 @@
+{
+  "version": 1,
+  "title": "Calling c.HTML with no templates loaded no longer crashes the request",
+  "diagram": {
+    "view": {
+      "w": 1000,
+      "h": 720
+    },
+    "top": 30,
+    "end": 690,
+    "label": "Sequence: a request reaches a handler that calls c.HTML while the engine has no HTML renderer. Before this PR the context called Instance on the nil renderer and panicked. With it, the context renders an empty HTML value, which returns an error that is recorded on the context, or, for 204 and 304, writes only the header.",
+    "participants": [
+      {
+        "id": "client",
+        "x": 100,
+        "name": "CLIENT"
+      },
+      {
+        "id": "engine",
+        "x": 300,
+        "name": "GIN ENGINE"
+      },
+      {
+        "id": "handler",
+        "x": 500,
+        "name": "HANDLER"
+      },
+      {
+        "id": "ctx",
+        "x": 700,
+        "name": "CONTEXT"
+      },
+      {
+        "id": "render",
+        "x": 900,
+        "name": "HTML RENDERER"
+      }
+    ],
+    "messages": [
+      {
+        "id": "req",
+        "from": "client",
+        "to": "engine",
+        "y": 150,
+        "text": "get /"
+      },
+      {
+        "id": "next",
+        "from": "engine",
+        "to": "handler",
+        "y": 205,
+        "text": "c.next()"
+      },
+      {
+        "id": "html",
+        "from": "handler",
+        "to": "ctx",
+        "y": 260,
+        "text": "c.html(200, tmpl)"
+      },
+      {
+        "id": "panic",
+        "from": "ctx",
+        "to": "engine",
+        "y": 315,
+        "text": "panic · renderer missing",
+        "reply": true,
+        "labelX": 600
+      },
+      {
+        "id": "render",
+        "from": "ctx",
+        "to": "render",
+        "y": 380,
+        "text": "html{}.render(w)"
+      },
+      {
+        "id": "fail",
+        "from": "render",
+        "to": "ctx",
+        "y": 435,
+        "text": "err · not configured",
+        "reply": true
+      },
+      {
+        "id": "back",
+        "from": "ctx",
+        "to": "handler",
+        "y": 490,
+        "text": "c.error(err) · abort",
+        "reply": true
+      },
+      {
+        "id": "hdr",
+        "from": "ctx",
+        "to": "handler",
+        "y": 575,
+        "text": "header only · return",
+        "reply": true
+      },
+      {
+        "id": "resp",
+        "from": "engine",
+        "to": "client",
+        "y": 650,
+        "text": "200 · empty body",
+        "reply": true
+      }
+    ],
+    "frame": {
+      "x": 325,
+      "y": 340,
+      "w": 615,
+      "h": 260,
+      "kind": "alt",
+      "branches": [
+        {
+          "label": "body allowed"
+        },
+        {
+          "label": "204 / 304",
+          "y": 530
+        }
+      ]
+    }
+  },
+  "inputs": [
+    {
+      "id": "status",
+      "kind": "choice",
+      "label": "STATUS PASSED TO C.HTML",
+      "options": [
+        {
+          "value": "200",
+          "label": "200 OK"
+        },
+        {
+          "value": "204",
+          "label": "204 No Content"
+        },
+        {
+          "value": "304",
+          "label": "304 Not Modified"
+        }
+      ]
+    },
+    {
+      "id": "engine",
+      "kind": "choice",
+      "label": "ENGINE BUILT WITH",
+      "options": [
+        {
+          "value": "default",
+          "label": "Default engine"
+        },
+        {
+          "value": "new",
+          "label": "Bare engine"
+        }
+      ]
+    },
+    {
+      "id": "before",
+      "kind": "switch",
+      "label": "BEFORE THIS PR"
+    }
+  ],
+  "initial": {
+    "status": "200",
+    "engine": "default",
+    "before": false
+  },
+  "rules": [
+    {
+      "show": [
+        "req",
+        "next",
+        "html",
+        "resp"
+      ],
+      "hot": [
+        "ctx"
+      ]
+    },
+    {
+      "when": {
+        "status": "204"
+      },
+      "labels": {
+        "html": "c.html(204, tmpl)"
+      }
+    },
+    {
+      "when": {
+        "status": "304"
+      },
+      "labels": {
+        "html": "c.html(304, tmpl)"
+      }
+    },
+    {
+      "when": {
+        "before": true
+      },
+      "show": [
+        "panic"
+      ],
+      "status": {
+        "panic": "error",
+        "resp": "error"
+      },
+      "frame": "off"
+    },
+    {
+      "when": {
+        "before": true,
+        "engine": "default"
+      },
+      "labels": {
+        "resp": "500 · stack logged"
+      }
+    },
+    {
+      "when": {
+        "before": true,
+        "engine": "new"
+      },
+      "labels": {
+        "resp": "broken conn · no reply"
+      }
+    },
+    {
+      "when": {
+        "before": false
+      },
+      "hot": [
+        "render"
+      ],
+      "frame": "ink"
+    },
+    {
+      "when": {
+        "before": false,
+        "status": "200"
+      },
+      "show": [
+        "render",
+        "fail",
+        "back"
+      ],
+      "status": {
+        "fail": "error"
+      }
+    },
+    {
+      "when": {
+        "before": false,
+        "status": "200",
+        "engine": "default"
+      },
+      "labels": {
+        "resp": "200 · empty · err logged"
+      }
+    },
+    {
+      "when": {
+        "before": false,
+        "status": "200",
+        "engine": "new"
+      },
+      "labels": {
+        "resp": "200 · empty body"
+      }
+    },
+    {
+      "when": {
+        "before": false,
+        "status": [
+          "204",
+          "304"
+        ]
+      },
+      "show": [
+        "hdr"
+      ],
+      "status": {
+        "resp": "ok"
+      }
+    },
+    {
+      "when": {
+        "before": false,
+        "status": "204"
+      },
+      "labels": {
+        "resp": "204 · no body"
+      }
+    },
+    {
+      "when": {
+        "before": false,
+        "status": "304"
+      },
+      "labels": {
+        "resp": "304 · no body"
+      }
+    }
+  ]
+}

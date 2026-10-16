@@ -1,0 +1,155 @@
+diff --git a/context.go b/context.go
+index 1dc730e323..788b00bba5 100644
+--- a/context.go
++++ b/context.go
+@@ -1219,6 +1219,11 @@ func (c *Context) Render(code int, r render.Render) {
+ // It also updates the HTTP code and sets the Content-Type as "text/html".
+ // See http://golang.org/doc/articles/wiki/
+ func (c *Context) HTML(code int, name string, obj any) {
++	if c.engine.HTMLRender == nil {
++		c.Render(code, render.HTML{})
++		return
++	}
++
+ 	instance := c.engine.HTMLRender.Instance(name, obj)
+ 	c.Render(code, instance)
+ }
+diff --git a/context_test.go b/context_test.go
+index e8d305e4ed..cef488c987 100644
+--- a/context_test.go
++++ b/context_test.go
+@@ -1345,6 +1345,82 @@ func TestContextRenderHTML(t *testing.T) {
+ 	assert.Equal(t, "text/html; charset=utf-8", w.Header().Get("Content-Type"))
+ }
+ 
++func TestContextRenderHTMLWithoutRenderer(t *testing.T) {
++	tests := []struct {
++		name           string
++		method         string
++		status         int
++		wantErrors     []string
++		wantAborted    bool
++		wantNextCalled bool
++	}{
++		{
++			name:        "body allowed",
++			method:      http.MethodGet,
++			status:      http.StatusAccepted,
++			wantErrors:  []string{"html renderer is not configured"},
++			wantAborted: true,
++		},
++		{
++			name:           "no content",
++			method:         http.MethodGet,
++			status:         http.StatusNoContent,
++			wantNextCalled: true,
++		},
++		{
++			name:           "not modified",
++			method:         http.MethodGet,
++			status:         http.StatusNotModified,
++			wantNextCalled: true,
++		},
++		{
++			name:        "head",
++			method:      http.MethodHead,
++			status:      http.StatusOK,
++			wantErrors:  []string{"html renderer is not configured"},
++			wantAborted: true,
++		},
++	}
++
++	for _, tt := range tests {
++		t.Run(tt.name, func(t *testing.T) {
++			w := httptest.NewRecorder()
++			router := New()
++			var contextErrors []string
++			var contextAborted bool
++			nextHandlerCalled := false
++
++			handlers := []HandlerFunc{
++				func(c *Context) {
++					c.HTML(tt.status, "index.tmpl", H{"title": "Main website"})
++					contextErrors = c.Errors.Errors()
++					contextAborted = c.IsAborted()
++				},
++				func(_ *Context) {
++					nextHandlerCalled = true
++				},
++			}
++			if tt.method == http.MethodHead {
++				router.HEAD("/", handlers...)
++			} else {
++				router.GET("/", handlers...)
++			}
++
++			req := httptest.NewRequest(tt.method, "/", nil)
++			require.NotPanics(t, func() {
++				router.ServeHTTP(w, req)
++			})
++
++			assert.Equal(t, tt.status, w.Code)
++			assert.Equal(t, "text/html; charset=utf-8", w.Header().Get("Content-Type"))
++			assert.Equal(t, tt.wantErrors, contextErrors)
++			assert.Equal(t, tt.wantAborted, contextAborted)
++			assert.Equal(t, tt.wantNextCalled, nextHandlerCalled)
++			assert.Empty(t, w.Body.String())
++		})
++	}
++}
++
+ func TestContextRenderHTML2(t *testing.T) {
+ 	w := httptest.NewRecorder()
+ 	c, router := CreateTestContext(w)
+diff --git a/render/html.go b/render/html.go
+index 965d84c614..36c8f07992 100644
+--- a/render/html.go
++++ b/render/html.go
+@@ -5,6 +5,7 @@
+ package render
+ 
+ import (
++	"errors"
+ 	"html/template"
+ 	"net/http"
+ 
+@@ -50,6 +51,8 @@ type HTML struct {
+ 
+ var htmlContentType = []string{"text/html; charset=utf-8"}
+ 
++var errHTMLRendererNotConfigured = errors.New("html renderer is not configured")
++
+ // Instance (HTMLProduction) returns an HTML instance which it realizes Render interface.
+ func (r HTMLProduction) Instance(name string, data any) Render {
+ 	return HTML{
+@@ -88,6 +91,9 @@ func (r HTMLDebug) loadTemplate() *template.Template {
+ // Render (HTML) executes template and writes its result with custom ContentType for response.
+ func (r HTML) Render(w http.ResponseWriter) error {
+ 	r.WriteContentType(w)
++	if r.Template == nil {
++		return errHTMLRendererNotConfigured
++	}
+ 
+ 	if r.Name == "" {
+ 		return r.Template.Execute(w, r.Data)
+diff --git a/render/render_test.go b/render/render_test.go
+index f63878b966..2481545212 100644
+--- a/render/render_test.go
++++ b/render/render_test.go
+@@ -630,6 +630,16 @@ func TestRenderHTMLTemplate(t *testing.T) {
+ 	assert.Equal(t, "text/html; charset=utf-8", w.Header().Get("Content-Type"))
+ }
+ 
++func TestRenderHTMLWithoutTemplate(t *testing.T) {
++	w := httptest.NewRecorder()
++
++	err := (HTML{}).Render(w)
++
++	require.EqualError(t, err, "html renderer is not configured")
++	assert.Empty(t, w.Body.String())
++	assert.Equal(t, "text/html; charset=utf-8", w.Header().Get("Content-Type"))
++}
++
+ func TestRenderHTMLTemplateEmptyName(t *testing.T) {
+ 	w := httptest.NewRecorder()
+ 	templ := template.Must(template.New("").Parse(`Hello {{.name}}`))

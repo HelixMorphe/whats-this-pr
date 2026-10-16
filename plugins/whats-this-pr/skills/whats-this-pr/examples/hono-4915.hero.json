@@ -1,0 +1,64 @@
+{
+  "version": 1,
+  "title": "Routes using vary are cached again, one entry per header value",
+  "diagram": {
+    "view": { "w": 1000, "h": 565 },
+    "top": 30,
+    "end": 535,
+    "label": "Sequence: a client sends GET / with Accept-Language ja; the cache middleware, configured with vary Accept-Language, looks up a key that now includes the header value, serves a stored variant on a hit, and on a miss runs the handler and stores the response unless its Vary names a header outside the configuration",
+    "participants": [
+      { "id": "client", "x": 120, "name": "CLIENT" },
+      { "id": "mw", "x": 380, "name": "CACHE MIDDLEWARE" },
+      { "id": "store", "x": 640, "name": "CACHE STORE" },
+      { "id": "handler", "x": 880, "name": "ROUTE HANDLER" }
+    ],
+    "messages": [
+      { "id": "req", "from": "client", "to": "mw", "y": 150, "text": "get / · accept-language: ja" },
+      { "id": "match", "from": "mw", "to": "store", "y": 205, "text": "match /::accept-language=ja" },
+      { "id": "matched", "from": "store", "to": "mw", "y": 255, "text": "undefined", "reply": true },
+      { "id": "next", "from": "mw", "to": "handler", "y": 330, "text": "next()", "labelX": 760 },
+      { "id": "handled", "from": "handler", "to": "mw", "y": 380, "text": "200 · no vary", "reply": true, "labelX": 760 },
+      { "id": "put", "from": "mw", "to": "store", "y": 430, "text": "put /::accept-language=ja" },
+      { "id": "resp", "from": "mw", "to": "client", "y": 495, "text": "200 · vary: accept-language", "reply": true }
+    ],
+    "frame": { "x": 70, "y": 290, "w": 870, "h": 165, "kind": "opt", "branches": [{ "label": "on a miss" }] }
+  },
+  "inputs": [
+    { "id": "before", "kind": "switch", "label": "BEFORE THIS PR" },
+    {
+      "id": "rvary",
+      "kind": "choice",
+      "label": "HANDLER SETS VARY",
+      "options": [
+        { "value": "none", "label": "None" },
+        { "value": "covered", "label": "Accept-Language" },
+        { "value": "extra", "label": "Accept-Language, Cookie" },
+        { "value": "star", "label": "*" }
+      ]
+    },
+    {
+      "id": "stored",
+      "kind": "choice",
+      "label": "ALREADY CACHED",
+      "disabledWhen": [{ "before": true }, { "rvary": ["extra", "star"] }],
+      "options": [
+        { "value": "none", "label": "Nothing" },
+        { "value": "same", "label": "Same language (ja)" },
+        { "value": "other", "label": "Another language (en)" }
+      ]
+    }
+  ],
+  "initial": { "before": false, "rvary": "none", "stored": "none" },
+  "rules": [
+    { "show": ["req", "match", "matched", "resp"], "hot": ["mw"] },
+    { "when": { "before": true }, "show": ["next", "handled"], "hot": ["handler"], "frame": "ink", "labels": { "match": "match /" } },
+    { "when": { "rvary": ["extra", "star"] }, "show": ["next", "handled"], "hot": ["handler"], "frame": "ink" },
+    { "when": { "stored": ["none", "other"] }, "show": ["next", "handled"], "hot": ["handler"], "frame": "ink" },
+    { "when": { "before": false, "rvary": ["none", "covered"], "stored": ["none", "other"] }, "show": ["put"], "hot": ["store"] },
+    { "when": { "before": false, "rvary": ["none", "covered"], "stored": "other" }, "labels": { "matched": "undefined · only en stored" } },
+    { "when": { "before": false, "rvary": ["none", "covered"], "stored": "same" }, "frame": "off", "hot": ["store"], "labels": { "matched": "200 · stored ja variant", "resp": "200 · ja, from cache" }, "status": { "matched": "ok" } },
+    { "when": { "rvary": "covered" }, "labels": { "handled": "200 · vary: accept-language" } },
+    { "when": { "rvary": "extra" }, "labels": { "handled": "200 · vary: …, cookie", "resp": "200 · vary: …, cookie" } },
+    { "when": { "rvary": "star" }, "labels": { "handled": "200 · vary: *", "resp": "200 · vary: *" } }
+  ]
+}

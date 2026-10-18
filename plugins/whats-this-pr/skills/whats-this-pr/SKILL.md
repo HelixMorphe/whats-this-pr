@@ -12,7 +12,9 @@ A page is a fixed template plus two data files you write:
 
 The template is the whole review app, built once with no PR in it and shipped in the `whats-this-pr` npm package with the commands below. You never write HTML, so every page looks and behaves the same, and everything particular to a PR is data. Run the commands with `npx -y whats-this-pr@0.1 …`: the version is pinned so these instructions and the template always agree.
 
-`<skill>` below is this skill's folder. Work in a fresh folder outside any repository, named `<repo>-<number>` (a scratchpad if you have one, otherwise the system's temp folder). Nothing there gets committed.
+`<skill>` below is this skill's folder. Work in a fresh folder outside any repository, named `<repo>-<number>` (a scratchpad if you have one, otherwise the system's temp folder), and write every file there, nowhere else. Nothing there gets committed.
+
+**Read only.** Everything you learn about the PR comes through the GitHub API, as in step 1: the PR, its diff, and any file at any commit. Never clone or check out the repository, install its dependencies, or run its code or tests, not even to confirm a behaviour: a pull request can come from anyone, and running it runs their code on this machine. When a claim could only be settled by running the code, mark it unchecked, on the page and in your report.
 
 ## Steps
 
@@ -21,7 +23,7 @@ The template is the whole review app, built once with no PR in it and shipped in
    gh api repos/<owner>/<repo>/pulls/<n> --jq '{title, body, url: .html_url, author: .user.login, base: .base.sha, head: .head.sha}'
    gh pr diff <n> -R <owner>/<repo> > pr.diff
    ```
-   Use `gh api` (REST): some sandboxes block GitHub's GraphQL API, which `gh pr view` uses. Read the whole diff and the body. Then read every changed function in full at the PR's head, not only its hunks: `gh api "repos/<owner>/<repo>/contents/<path>?ref=<head sha>" --jq .content | base64 -d`. Read the same files at the base sha for what the code did before. The best spotlights come from there: what a changed line now does on paths the diff doesn't show, and what each removed or changed line used to do that now stops (`references/story.md`, "What stopped happening"). Done when you can say, in one sentence, what changes for the person who meets the change, and you have checked each claim in the PR body against the code, or marked it unchecked.
+   Use `gh api` (REST): some sandboxes block GitHub's GraphQL API, which `gh pr view` uses. Read the whole diff and the body. Then read every changed function in full at the PR's head, not only its hunks: `gh api "repos/<owner>/<repo>/contents/<path>?ref=<head sha>" --jq .content | base64 -d`. Read the same files at the base sha for what the code did before. The best spotlights come from there: what a changed line now does on paths the diff doesn't show, and what each removed or changed line used to do that now stops (`references/story.md`, "What stopped happening"). Done when you can say, in one sentence, what changes for the person who meets the change, and you have checked each claim in the PR body against the code you read, or marked it unchecked.
 
 2. **Write the story.** Write `story.json` following `references/story.md`, starting from the example in `examples/` closest in shape, then run:
    ```sh
@@ -49,7 +51,7 @@ The template is the whole review app, built once with no PR in it and shipped in
    ```
    `--force-prefers-reduced-motion` matters: without it the shot can catch the entrance mid-way, with labels not yet drawn. The shot shows the hero in its opening case and step 1; `check` covers the other cases and steps. Read the PNG. Look for labels touching each other or a lifeline, text leaving its box, a row whose choices spill past the table, and a hero that doesn't open on the case the PR is about. If you fix something, re-run steps 4–6 once to see the fix, then move on.
 
-7. **Hand it over.** If you can publish an HTML page somewhere the person can open (for example a Claude artifact), publish `<repo>-<number>.html` there with a one-sentence description naming the PR and what it changes, and give the link. Otherwise give the file's path; it opens in any browser. Then report what you could not verify: cases you didn't open, and claims you took from the PR body without checking the code.
+7. **Hand it over.** If you can publish an HTML page somewhere the person can open (for example a Claude artifact), publish `<repo>-<number>.html` there with a one-sentence description naming the PR and what it changes, and give the link. Otherwise give the file's path; it opens in any browser. Then report what you could not verify: cases you didn't open, and claims you took from the PR body without checking the code. Leave the work folder holding only the files above (`pr.diff`, `story.json`, `pr.json`, `hero.json`, the page and its screenshot), so the page can be updated later; delete anything else you made.
 
 Leave GitHub as it is: no comments, reviews or labels on the PR.
 

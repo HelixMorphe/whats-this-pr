@@ -29,7 +29,7 @@ Pages for real pull requests, written by the skill. Open them at **[helixmorphe.
 /plugin install whats-this-pr@whats-this-pr
 ```
 
-Then ask: *"What's this PR? https://github.com/owner/repo/pull/123"*. The skill needs the [GitHub CLI](https://cli.github.com) (`gh`, signed in) and Node.js 20 or later. It reads the PR, writes the page, and hands you the file (or publishes it, where the agent can publish pages). It never comments on or changes the PR.
+Then ask: *"What's this PR? https://github.com/owner/repo/pull/123"*. The skill needs the [GitHub CLI](https://cli.github.com) (`gh`, signed in) and Node.js 20 or later. It reads the PR, writes the page, and hands you the file (or publishes it, where the agent can publish pages). It only reads: it never comments on or changes the PR, and never clones, installs or runs its code.
 
 ## Use the package on its own
 

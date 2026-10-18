@@ -2,6 +2,8 @@
 
 Turn a pull request into a guided review page: one self-contained HTML file a reviewer opens instead of starting at line 1 of the diff.
 
+The write-up, with a live example: **[santhosh.fyi/projects/whats-this-pr](https://santhosh.fyi/projects/whats-this-pr)**.
+
 - **The behaviour, before and after.** An interactive sequence diagram of what the PR changes. Flip **Before this PR / With this PR**, pick the case (cache hit or miss, flag on or off, header present or not), and see which calls happen, what they carry, and how each case ends. Red only where a call actually fails.
 - **The diff, in reading order.** The PR cut into steps a reviewer can follow, cause before effect, with short notes pinned to the lines that matter.
 - **The risks.** Spotlights on what a reviewer has to judge: behaviour nobody ran, a change users will notice, what the old code did that now stops.

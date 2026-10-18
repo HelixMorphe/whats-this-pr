@@ -2,6 +2,8 @@
 
 Turn a pull request's data into a guided review page: one self-contained HTML file with an interactive before/after diagram of the behaviour the PR changes, the diff cut into ordered steps with notes, the risks to check, and the files nobody needs to read.
 
+The write-up, with a live example: **[santhosh.fyi/projects/whats-this-pr](https://santhosh.fyi/projects/whats-this-pr)**.
+
 This package is the page template and the three commands that fill it. It is driven by the **What's this PR?** Claude Code skill, which reads the PR and writes the data; you can also write the data yourself.
 
 ```sh

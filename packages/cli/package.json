@@ -1,11 +1,11 @@
 {
   "name": "whats-this-pr",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Turn a pull request into a guided review page: an interactive before/after diagram of the behaviour it changes, the diff cut into ordered steps with notes, and the risks to check.",
   "keywords": ["pull-request", "code-review", "review", "diff", "claude-code", "skill", "agent"],
   "license": "MIT",
   "author": "HelixMorphe",
-  "homepage": "https://github.com/HelixMorphe/whats-this-pr#readme",
+  "homepage": "https://santhosh.fyi/projects/whats-this-pr",
   "repository": { "type": "git", "url": "git+https://github.com/HelixMorphe/whats-this-pr.git", "directory": "packages/cli" },
   "bugs": "https://github.com/HelixMorphe/whats-this-pr/issues",
   "type": "module",

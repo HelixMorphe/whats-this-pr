@@ -20,6 +20,8 @@ export default defineConfig(({ mode }) => ({
             { find: /^shiki$/, replacement: src('artifact/shiki.ts') },
             { find: /^shiki\/wasm$/, replacement: src('artifact/empty.ts') },
             { find: /^@shikijs\/themes\/.+$/, replacement: src('artifact/empty.ts') },
+            // @pierre/diffs registers ten Pierre themes; the page uses only pierre-light and pierre-dark.
+            { find: /^@pierre\/theme\/pierre-(light|dark)-.+$/, replacement: src('artifact/empty.ts') },
           ]
         : []),
       { find: '@', replacement: src('') },

@@ -9,10 +9,11 @@ import { join } from 'node:path'
 import { bundledLanguagesInfo } from 'shiki'
 
 // A fixed set of syntax grammars, under every name @pierre/diffs may ask for (it uses Shiki's aliases, e.g. tf, zsh).
-// A file in any other language shows as plain text. Each grammar costs page size, so the list stays short.
+// A file in any other language shows as plain text. Each grammar costs page size, so the list stays short. No Ruby:
+// its grammar embeds C, C++, Lua, Haml and more for heredocs, about 1 MB, which pushed pages past the publish limit.
 export const LANGS = [
   'typescript', 'tsx', 'javascript', 'jsx', 'json', 'jsonc', 'yaml', 'toml', 'markdown', 'css', 'scss', 'html',
-  'shellscript', 'python', 'go', 'rust', 'java', 'kotlin', 'sql', 'graphql', 'docker', 'hcl', 'terraform', 'ruby',
+  'shellscript', 'python', 'go', 'rust', 'java', 'kotlin', 'sql', 'graphql', 'docker', 'hcl', 'terraform',
   'xml', 'ini', 'dotenv',
 ]
 const info = Object.fromEntries(bundledLanguagesInfo.map((l) => [l.id, l]))

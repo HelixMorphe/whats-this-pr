@@ -1,6 +1,6 @@
 {
   "name": "whats-this-pr",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Turn a pull request into a guided review page: an interactive before/after diagram of the behaviour it changes, the diff cut into ordered steps with notes, and the risks to check.",
   "keywords": ["pull-request", "code-review", "review", "diff", "claude-code", "skill", "agent"],
   "license": "MIT",

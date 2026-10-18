@@ -1,7 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
-@import "@fontsource-variable/inter";
+@import "./fonts.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -177,9 +177,7 @@
     @apply font-sans;
     }
 }
-@import "@fontsource-variable/geist-mono";
-/* The hand for code notes, bundled (no font host is contacted). */
-@import "@fontsource-variable/caveat";
+/* The hand for code notes is bundled with the other fonts (fonts.css); no font host is contacted. */
 
 @theme inline {
     --font-mono: 'Geist Mono Variable', ui-monospace, Menlo, monospace;

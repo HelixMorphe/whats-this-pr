@@ -1,6 +1,6 @@
 {
   "name": "whats-this-pr",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Turn a pull request into a guided review page: an interactive before/after diagram of the behaviour it changes, the diff in ordered steps with notes, and the risks to check.",
   "author": { "name": "HelixMorphe", "url": "https://github.com/HelixMorphe" },
   "homepage": "https://github.com/HelixMorphe/whats-this-pr",

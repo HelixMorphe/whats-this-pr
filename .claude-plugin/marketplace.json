@@ -7,7 +7,7 @@
       "name": "whats-this-pr",
       "source": "./plugins/whats-this-pr",
       "description": "Turn a pull request into a guided review page: an interactive before/after diagram of the behaviour it changes, the diff in ordered steps with notes, and the risks to check.",
-      "version": "0.1.1"
+      "version": "0.1.2"
     }
   ]
 }

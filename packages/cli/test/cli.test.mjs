@@ -24,6 +24,8 @@ for (const name of names) {
     assert.deepEqual(r.warnings, [], r.warnings.join('\n'))
     const page = make(pr, hero, '<!-- template -->')
     assert.ok(page.startsWith(`<title>${pr.repo} #${pr.number}</title>`))
+    assert.match(page.slice(0, 1024), /<meta charset="utf-8">/)
+    assert.match(page, /<meta name="viewport" content="width=device-width, initial-scale=1">/)
     assert.ok(page.endsWith('<!-- template -->\n'))
   })
 }

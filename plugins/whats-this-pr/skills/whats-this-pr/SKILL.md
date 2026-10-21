@@ -22,7 +22,7 @@ The template is the whole review app, built once with no PR in it and shipped in
    ```sh
    npm view whats-this-pr version
    ```
-   If it prints a version newer than 0.1.3, this skill is out of date: say so at the top of your report in step 7, with the fix, `/plugin marketplace update whats-this-pr`, then `/plugin update whats-this-pr@whats-this-pr`, then restart. Either way, carry on with 0.1.3; never run the newer version, since these instructions were written for this one. If the command fails (no network, no npm), skip it and don't mention it.
+   If it prints a version newer than 0.1.3, this skill is out of date: say so at the top of your report in step 7, with the fix: run `claude plugin update whats-this-pr@whats-this-pr` (it fetches the new release too), then restart Claude Code. Either way, carry on with 0.1.3; never run the newer version, since these instructions were written for this one. If the command fails (no network, no npm), skip it and don't mention it.
 
 1. **Read the PR.**
    ```sh

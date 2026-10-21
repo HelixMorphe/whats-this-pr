@@ -10,7 +10,7 @@ A page is a fixed template plus two data files you write:
 - **`story.json`**, the story: the PR cut into steps, which hunks each step shows, notes, spotlights, and the skippable files. `whats-this-pr story` turns it into `pr.json`.
 - **`hero.json`**, the hero: a sequence diagram of the behaviour the PR changes, its controls (Before / With this PR tabs, then a row per condition), and the rules for what each case shows.
 
-The template is the whole review app, built once with no PR in it and shipped in the `whats-this-pr` npm package with the commands below. You never write HTML, so every page looks and behaves the same, and everything particular to a PR is data. Run the commands with `npx -y whats-this-pr@0.1 …`: the version is pinned so these instructions and the template always agree.
+The template is the whole review app, built once with no PR in it and shipped in the `whats-this-pr` npm package with the commands below. You never write HTML, so every page looks and behaves the same, and everything particular to a PR is data. Run the commands with `npx -y whats-this-pr@0.1.3 …`: the exact version is pinned so these instructions and the template always agree, and so no newer release runs until this skill is updated to name it.
 
 `<skill>` below is this skill's folder. Work in a fresh folder outside any repository, named `<repo>-<number>` (a scratchpad if you have one, otherwise the system's temp folder), and write every file there, nowhere else. Nothing there gets committed.
 
@@ -27,7 +27,7 @@ The template is the whole review app, built once with no PR in it and shipped in
 
 2. **Write the story.** Write `story.json` following `references/story.md`, starting from the example in `examples/` closest in shape, then run:
    ```sh
-   npx -y whats-this-pr@0.1 story story.json pr.diff -o pr.json
+   npx -y whats-this-pr@0.1.3 story story.json pr.diff -o pr.json
    ```
    Done when it writes `pr.json`: every hunk is placed and every note found its line.
 
@@ -35,13 +35,13 @@ The template is the whole review app, built once with no PR in it and shipped in
 
 4. **Check.**
    ```sh
-   npx -y whats-this-pr@0.1 check pr.json hero.json
+   npx -y whats-this-pr@0.1.3 check pr.json hero.json
    ```
    Fix every `ERROR`, and read every `warn`: fix it, or know why it stands. Done when it reports 0 errors.
 
 5. **Make the page.**
    ```sh
-   npx -y whats-this-pr@0.1 make pr.json hero.json -o <repo>-<number>.html
+   npx -y whats-this-pr@0.1.3 make pr.json hero.json -o <repo>-<number>.html
    ```
 
 6. **Look once**, if a Chrome or Chromium is installed (`/Applications/Google Chrome.app/Contents/MacOS/Google Chrome` on macOS, `google-chrome` or `chromium` on Linux). Without one, skip this step and say so in your report; `check` is the check then.

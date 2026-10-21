@@ -3,7 +3,7 @@
 `story.json` is everything below the hero: the PR cut into steps a reviewer reads in order, which hunks of the diff each step shows, notes on the lines that matter, the risks to check, and the files nobody needs to read. It is data. `whats-this-pr story` turns it and `pr.diff` into `pr.json`, the file the page reads: it cuts the diff, finds each note's line by its text, counts the lines, and fails unless every hunk lands somewhere.
 
 ```sh
-npx -y whats-this-pr@0.1 story story.json pr.diff -o pr.json
+npx -y whats-this-pr@0.1.3 story story.json pr.diff -o pr.json
 ```
 
 Full examples: `examples/undici-5683.story.json` (2 steps), `examples/hono-4915.story.json` (one file's hunks split across three steps), `examples/starlette-3435.story.json` (4 steps and a skippable docs group).

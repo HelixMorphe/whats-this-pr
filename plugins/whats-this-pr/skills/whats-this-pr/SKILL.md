@@ -18,6 +18,12 @@ The template is the whole review app, built once with no PR in it and shipped in
 
 ## Steps
 
+0. **Check for a newer release.**
+   ```sh
+   npm view whats-this-pr version
+   ```
+   If it prints a version newer than 0.1.3, this skill is out of date: say so at the top of your report in step 7, with the fix, `/plugin marketplace update whats-this-pr`, then `/plugin update whats-this-pr@whats-this-pr`, then restart. Either way, carry on with 0.1.3; never run the newer version, since these instructions were written for this one. If the command fails (no network, no npm), skip it and don't mention it.
+
 1. **Read the PR.**
    ```sh
    gh api repos/<owner>/<repo>/pulls/<n> --jq '{title, body, url: .html_url, author: .user.login, base: .base.sha, head: .head.sha}'
@@ -51,7 +57,7 @@ The template is the whole review app, built once with no PR in it and shipped in
    ```
    `--force-prefers-reduced-motion` matters: without it the shot can catch the entrance mid-way, with labels not yet drawn. The shot shows the hero in its opening case and step 1; `check` covers the other cases and steps. Read the PNG. Look for labels touching each other or a lifeline, text leaving its box, a row whose choices spill past the table, and a hero that doesn't open on the case the PR is about. If you fix something, re-run steps 4–6 once to see the fix, then move on.
 
-7. **Hand it over.** If you can publish an HTML page somewhere the person can open (for example a Claude artifact), publish `<repo>-<number>.html` there with a one-sentence description naming the PR and what it changes, and give the link. Otherwise give the file's path; it opens in any browser. Then report what you could not verify: cases you didn't open, and claims you took from the PR body without checking the code. Leave the work folder holding only the files above (`pr.diff`, `story.json`, `pr.json`, `hero.json`, the page and its screenshot), so the page can be updated later; delete anything else you made.
+7. **Hand it over.** If you can publish an HTML page somewhere the person can open (for example a Claude artifact), publish `<repo>-<number>.html` there with a one-sentence description naming the PR and what it changes, and give the link. Otherwise give the file's path; it opens in any browser. If step 0 found a newer release, put that first. Then report what you could not verify: cases you didn't open, and claims you took from the PR body without checking the code. Leave the work folder holding only the files above (`pr.diff`, `story.json`, `pr.json`, `hero.json`, the page and its screenshot), so the page can be updated later; delete anything else you made.
 
 Leave GitHub as it is: no comments, reviews or labels on the PR.
 
